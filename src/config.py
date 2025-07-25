@@ -67,14 +67,6 @@ class Config(BaseSettings):
             raise ValueError("OPENAI_API_KEY is required")
         return v
     
-    @field_validator('TEMPERATURE')
-    @classmethod
-    def validate_temperature(cls, v):
-        """Validate temperature is between 0 and 2."""
-        if not 0 <= v <= 2:
-            raise ValueError("Temperature must be between 0 and 2")
-        return v
-    
     @property
     def vector_store_path(self) -> Path:
         """Get absolute path to vector store directory."""
