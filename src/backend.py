@@ -11,7 +11,7 @@ from langchain_community.callbacks import get_openai_callback
 from vector_store import VectorStoreManager
 from config import config
 from prompts import get_prompt_template
-from pydantic import SecretStr  # Add this import at the top if not present
+from pydantic import SecretStr 
 
 
 class QueryProcessor:

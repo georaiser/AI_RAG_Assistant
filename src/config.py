@@ -59,14 +59,6 @@ class Config(BaseSettings):
     BOT_NAME: str = "DocuPy Bot"
     BOT_DESCRIPTION: str = "Python documentation assistant"
     
-    @field_validator('OPENAI_API_KEY')
-    @classmethod
-    def validate_api_key(cls, v):
-        """Validate OpenAI API key is provided."""
-        if not v or not v.strip():
-            raise ValueError("OPENAI_API_KEY is required")
-        return v
-    
     @property
     def vector_store_path(self) -> Path:
         """Get absolute path to vector store directory."""
