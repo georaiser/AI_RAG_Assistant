@@ -1,0 +1,22 @@
+# Core RAG dependencies
+streamlit
+langchain
+langchain-openai
+langchain-community
+langchain-chroma
+
+# Hugging Face embeddings
+langchain-huggingface
+sentence-transformers
+torch  # Required for sentence-transformers
+
+# Document processing
+pdfplumber
+pypdf
+
+# Configuration
+python-dotenv
+pydantic-settings
+
+# Vector store
+chromadb
