@@ -1,65 +1,61 @@
 """
-Prompt templates module for the query processing system.
-Contains all prompt templates used across the application.
+Prompt templates with query expansion and better response generation.
 """
 
 from langchain.prompts import PromptTemplate
-from config import config
 
+SYSTEM_TEMPLATE = """
+You are DocuPy Bot, an expert assistant for official Python documentation. You provide precise, helpful answers based on the provided context.
 
-def create_system_prompt() -> PromptTemplate:
-    """
-    Create the main system prompt template for query processing.
-    
-    Returns:
-        PromptTemplate: Configured system prompt template
-    """
-    template = f"""You are {config.BOT_NAME}, a helpful Python documentation assistant.
+Available context from documentation:
+{context}
 
-Your role is to answer questions about Python programming using the provided documentation context.
+Your guidelines:
+1. **Accuracy First**: Base answers strictly on the provided context
+2. **Code Precision**: Reproduce code exactly as shown in the documentation
+3. **Clear Structure**: Organize responses with clear explanations and examples
+4. **Source Awareness**: Reference specific parts of the documentation when helpful
+5. **Honest Limits**: If information isn't in the context, clearly state this
 
-Context from documentation:
-{{context}}
+When providing code examples:
+- Show the exact syntax from the documentation
+- Include brief explanations of key concepts
+- Mention any important warnings or notes
 
-Guidelines:
-- Use the provided context to answer questions about Python
-- If you can find relevant information in the context, provide a clear and helpful answer
-- Include code examples from the context when available
-- If the specific information is not in the context, say so briefly and provide what related information you can find
-- Be conversational and helpful
-- Focus on practical, actionable answers
+Conversation history:
+{chat_history}
 
-Question: {{question}}
+Current question: {question}
 
-Answer:"""
+DocuPy Bot response:
+"""
 
+QUERY_EXPANSION_TEMPLATE = """
+You are a query expansion assistant. Given a Python documentation query, expand it to improve search relevance.
+
+Original query: {query}
+
+Create an enhanced version by:
+- Adding relevant Python terms and concepts
+- Including alternative terminology developers might use
+- Expanding abbreviations or adding common synonyms
+- Adding context that might help find the right documentation
+
+Return only the enhanced query as a single line, without explanations.
+
+Enhanced query:
+"""
+
+def get_system_prompt() -> PromptTemplate:
+    """Get enhanced system prompt template."""
     return PromptTemplate(
-        template=template,
-        input_variables=["context", "question"]
+        template=SYSTEM_TEMPLATE,
+        input_variables=["context", "chat_history", "question"]
     )
 
-
-# Prompt template registry for easy access
-PROMPT_TEMPLATES = {
-    "system": create_system_prompt,
-}
-
-
-def get_prompt_template(template_name: str) -> PromptTemplate:
-    """
-    Get a prompt template by name.
-    
-    Args:
-        template_name: Name of the template to retrieve
-        
-    Returns:
-        PromptTemplate: The requested prompt template
-        
-    Raises:
-        KeyError: If template_name is not found
-    """
-    if template_name not in PROMPT_TEMPLATES:
-        available_templates = ", ".join(PROMPT_TEMPLATES.keys())
-        raise KeyError(f"Template '{template_name}' not found. Available templates: {available_templates}")
-    
-    return PROMPT_TEMPLATES[template_name]()
+def get_query_expansion_prompt() -> PromptTemplate:
+    """Get query expansion prompt template."""
+    return PromptTemplate(
+        template=QUERY_EXPANSION_TEMPLATE,
+        input_variables=["query"]
+    )

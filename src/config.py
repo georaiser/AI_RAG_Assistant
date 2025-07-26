@@ -1,85 +1,68 @@
 """
-Configuration module for RAG applications.
-Hybrid setup: Hugging Face embeddings + OpenAI LLM
+Configuration module for the Bot application.
+Handles environment variables and application settings.
 """
 
 import os
 from pathlib import Path
-from typing import List, Literal
+from typing import Optional, List, Literal
 from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import SecretStr
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
-class Config(BaseSettings):
-    """Configuration class with validation and type safety."""
+class Config:
+    """Configuration class that manages all application settings."""
     
     # Project paths
     PROJECT_ROOT: Path = Path(__file__).parent
-    
-    # OpenAI configuration (for LLM only)
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
+    # Document path
+    DOCUMENT_PATH: str = "data/python-basics-sample-chapters.pdf"
+
+    # OpenAI configuration
+    OPENAI_API_KEY: SecretStr = SecretStr(os.getenv("OPENAI_API_KEY", ""))
     MODEL_NAME: str = "gpt-3.5-turbo"
     TEMPERATURE: float = 0.7
-    
+
     # Embedding configuration
-    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"  # Switch here!
-    
-    # OpenAI embedding (if using)
+    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
+
+    # OpenAI embedding
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    
+
     # Hugging Face embedding options
     HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"  # Fast & good
     # Alternatives:
     # "sentence-transformers/all-mpnet-base-v2"  # Better quality
     # "BAAI/bge-small-en-v1.5"  # Excellent for retrieval
-    
+
     # Vector store configuration
-    VECTOR_STORE_DIR: str = "vector_store"
-    
+    VECTOR_STORE_PATH: Path = PROJECT_ROOT /  "vector_store"
+
     # Document processing
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
-    SEPARATORS: List[str] = ["\n\n", "\n", " ", ""]
-    
+    SEPARATORS: List[str] = ["\n\n", "\n", " ", ""]  # ["\n\n\n", "\n\n", "\n", ".", "!", "?", " ", ""],
+
     # Retrieval configuration
     RETRIEVAL_K: int = 5
     FETCH_K: int = 10
     LAMBDA_MULT: float = 0.5
     SEARCH_TYPE: str = "similarity"
-    
-    # Document path
-    DOCUMENT_PATH: str = "data/python-basics-sample-chapters.pdf"
-    
+
+    # BM25 Retriever Configuration
+    BM25_RETRIEVER = True  # Set to False to disable BM25 hybrid search
+    # Alternative configurations you might want to add:
+    # BM25_WEIGHT = 0.3  # Weight for BM25 in ensemble (semantic gets 1 - BM25_WEIGHT)
+    # BM25_K_RATIO = 0.5  # Ratio of total k to use for BM25 (default: k // 2)
+
     # App configuration
-    APP_TITLE: str = "DocuPy Bot"
+    APP_TITLE: str = "Docu Bot"
     APP_ICON: str = "🐍"
-    BOT_NAME: str = "DocuPy Bot"
-    BOT_DESCRIPTION: str = "Python documentation assistant"
-    
-    @property
-    def vector_store_path(self) -> Path:
-        """Get absolute path to vector store directory."""
-        return self.PROJECT_ROOT / self.VECTOR_STORE_DIR
-    
-    @property
-    def document_full_path(self) -> Path:
-        """Get absolute path to document."""
-        doc_path = self.PROJECT_ROOT / self.DOCUMENT_PATH
-        if doc_path.exists():
-            return doc_path
-        
-        parent_path = self.PROJECT_ROOT.parent / self.DOCUMENT_PATH
-        if parent_path.exists():
-            return parent_path
-            
-        return doc_path
-    
-    def ensure_directories(self) -> None:
-        """Create necessary directories."""
-        self.vector_store_path.mkdir(exist_ok=True, parents=True)
-    
+    BOT_NAME: str = "Docu Bot"
+    BOT_DESCRIPTION: str = "Documentation assistant"    
+
 # Global configuration instance
 config = Config()
