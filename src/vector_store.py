@@ -106,7 +106,12 @@ class SemanticSearchManager:
         if not self._vector_store:
             logger.error("Vector store not initialized")
             return None
-        return self._vector_store.as_retriever(search_kwargs={"k": k})
+        return self._vector_store.as_retriever(
+            search_kwargs={"k": k},
+            search_type=config.SEARCH_TYPE,
+            fetch_k=config.FETCH_K,
+            lambda_mult=config.LAMBDA_MULT
+        )
     
     @property
     def is_available(self) -> bool:

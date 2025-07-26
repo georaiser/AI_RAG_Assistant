@@ -286,7 +286,6 @@ class DocumentLoaderFactory:
         return list(cls._loaders.keys())
 
 
-
 # function to load and process documents
 def load_and_process_document(file_path: Path) -> List[Document]:
     """Load and process any supported document type."""
