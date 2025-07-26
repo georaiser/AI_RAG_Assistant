@@ -27,7 +27,7 @@ class Config:
     TEMPERATURE: float = 0.7
 
     # Embedding configuration
-    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
+    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "openai"
 
     # OpenAI embedding
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
@@ -47,8 +47,8 @@ class Config:
     SEPARATORS: List[str] = ["\n\n", "\n", " ", ""]  # ["\n\n\n", "\n\n", "\n", ".", "!", "?", " ", ""],
 
     # Retrieval configuration
-    RETRIEVAL_K: int = 5
-    FETCH_K: int = 10
+    RETRIEVAL_K: int = 10
+    FETCH_K: int = 40
     LAMBDA_MULT: float = 0.5
     SEARCH_TYPE: str = "similarity"
 
