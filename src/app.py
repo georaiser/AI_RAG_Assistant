@@ -1,11 +1,10 @@
 """
-Streamlit app for Docu Bot.
+Streamlit app for Docu Bot - UI components only.
 """
 
 import streamlit as st
 import logging
-from typing import Dict, Any, List
-from pathlib import Path
+from typing import List
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,88 +14,22 @@ logger = logging.getLogger(__name__)
 for lib in ["chromadb", "httpx", "openai", "langchain"]:
     logging.getLogger(lib).setLevel(logging.WARNING)
 
-from src.backend import handle_query
-from src.data_loader import DocumentLoader, DocumentLoaderFactory
-from src.vector_store import initialize_vector_store, load_vector_store
+from app_loader import app_loader
+from src.data_loader import DocumentLoaderFactory
 from src.config import config
-
-loader = DocumentLoader()
 
 # Page config
 st.set_page_config(
-    page_title="DocuPy Bot",
-    page_icon="📄",
+    page_title="Docu Bot",
+    page_icon="📚🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-@st.cache_data
-def get_document_files() -> List[Path]:
-    """Get list of supported document files - cached for performance."""
-    document_path = Path(config.DOCUMENT_PATH)
-    
-    if document_path.is_file():
-        return [document_path]
-    elif document_path.is_dir():
-        supported_exts = DocumentLoaderFactory.supported_extensions()
-        files = []
-        for ext in supported_exts:
-            files.extend(document_path.glob(f"*{ext}"))
-        return sorted(files)
-    
-    return []
-
-def initialize_app() -> bool:
-    """Initialize the application - simplified version."""
-    try:
-        # Check existing vector store
-        if config.VECTOR_STORE_PATH.exists() and any(config.VECTOR_STORE_PATH.iterdir()):
-            logger.info("Loading existing vector store...")
-            vector_store = load_vector_store()
-            return vector_store is not None
-        
-        # Create new vector store
-        logger.info("Creating new vector store...")
-        with st.spinner("Processing documents..."):
-            document_files = get_document_files()
-            
-            if not document_files:
-                st.error("No supported documents found.")
-                return False
-            
-            # Load all documents
-            all_documents = []
-            for file_path in document_files:
-                try:
-                    docs = loader.load_and_process_document(Path(config.DOCUMENT_PATH))
-                    all_documents.extend(docs)
-                    logger.info(f"Loaded {len(docs)} chunks from {file_path.name}")
-                except Exception as e:
-                    logger.error(f"Error loading {file_path}: {e}")
-                    st.warning(f"Failed to load {file_path.name}")
-            
-            if not all_documents:
-                st.error("Failed to load any documents")
-                return False
-            
-            # Create vector store
-            vector_store = initialize_vector_store(all_documents)
-            if vector_store:
-                st.success("Vector store created successfully!")
-                return True
-            else:
-                st.error("Failed to create vector store")
-                return False
-        
-    except Exception as e:
-        logger.error(f"Initialization error: {e}")
-        st.error(f"Initialization failed: {e}")
-        return False
-
 def render_sidebar() -> None:
-    """Simplified sidebar with essential info."""
+    """Render sidebar with statistics and document info."""
     with st.sidebar:
-        st.title("📊 Statistics")
+        st.title("Statistics")
         
         # Session stats
         st.metric("Queries", st.session_state.get('query_count', 0))
@@ -117,15 +50,17 @@ def render_sidebar() -> None:
         st.divider()
         
         # Document info
-        st.subheader("📚 Documents")
-        documents = get_document_files()
-        st.metric("Files", len(documents))
+        st.subheader("Document")
+        doc_info = app_loader.get_document_info()
         
-        if documents:
-            with st.expander("Document List"):
-                for doc in documents:
-                    size_kb = doc.stat().st_size / 1024
-                    st.caption(f"{doc.name} ({size_kb:.1f} KB)")
+        if doc_info["exists"]:
+            st.metric("File", "1")
+            with st.expander("Document Details"):
+                st.write(f"**Name:** {doc_info['name']}")
+                st.write(f"**Size:** {doc_info['size_kb']:.1f} KB")
+                st.write(f"**Type:** {doc_info['type']}")
+        else:
+            st.error("No document found")
         
         # Reset button
         if st.button("🔄 Reset Stats", type="secondary"):
@@ -136,23 +71,25 @@ def render_sidebar() -> None:
 def initialize_session_state() -> None:
     """Initialize session state with defaults."""
     if "messages" not in st.session_state:
-        documents = get_document_files()
+        doc_info = app_loader.get_document_info()
         supported = ", ".join(DocumentLoaderFactory.supported_extensions())
+        
+        doc_status = f"**Document:** {doc_info['name']}" if doc_info["exists"] else "** Document:** Not found"
         
         welcome = f"""**Welcome to DocuPy Bot!** 🤖
 
 I'm your document assistant powered by advanced RAG.
 
-**📄 Documents loaded:** {len(documents)}
-**📝 Supported formats:** {supported}
+{doc_status}
+**Supported formats:** {supported}
 
 **What I can help with:**
-- Answer questions about your documents
+- Answer questions about your document
 - Find specific information quickly  
 - Summarize content and extract key points
 - Provide contextual explanations
 
-Ask me anything about your documents!"""
+Ask me anything about your document!"""
 
         st.session_state.messages = [{"role": "assistant", "content": welcome}]
     
@@ -164,32 +101,15 @@ Ask me anything about your documents!"""
         if key not in st.session_state:
             st.session_state[key] = default
 
-def main():
-    """Main application - streamlined."""
-    initialize_session_state()
-    
-    # Header
-    st.title("🤖 DocuPy Bot")
-    st.caption("*Intelligent Document Assistant with RAG*")
-    
-    # Initialize app once
-    if not st.session_state.app_initialized:
-        if initialize_app():
-            st.session_state.app_initialized = True
-            st.rerun()
-        else:
-            st.stop()
-    
-    # Sidebar
-    render_sidebar()
-    
+def render_chat_interface():
+    """Render the main chat interface."""
     # Chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
     
     # Chat input
-    if user_input := st.chat_input("Ask about your documents..."):
+    if user_input := st.chat_input("Ask about your document..."):
         # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         
@@ -198,10 +118,10 @@ def main():
         
         # Process query
         with st.chat_message("assistant"):
-            with st.spinner("🔍 Searching documents..."):
+            with st.spinner("🔍 Searching document..."):
                 try:
                     # Handle query
-                    result = handle_query(user_input, st.session_state.messages)
+                    result = app_loader.process_query(user_input, st.session_state.messages)
                     response = result.get("answer", "I couldn't process your query.")
                     
                     # Display response
@@ -216,7 +136,7 @@ def main():
                     
                     # Show sources
                     if sources := result.get("sources"):
-                        with st.expander(f"📖 Sources ({len(sources)})"):
+                        with st.expander(f"Sources ({len(sources)})"):
                             for source in sources:
                                 st.caption(f"• {source}")
                     
@@ -224,9 +144,31 @@ def main():
                     
                 except Exception as e:
                     logger.error(f"Query error: {e}")
-                    error_msg = "❌ Error processing query. Please try again."
+                    error_msg = "Error processing query. Please try again."
                     st.error(error_msg)
                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
+
+def main():
+    """Main application entry point."""
+    initialize_session_state()
+    
+    # Header
+    st.title("Docu Bot")
+    st.caption("*Intelligent Document Assistant with RAG*")
+    
+    # Initialize app once
+    if not st.session_state.app_initialized:
+        if app_loader.initialize_app():
+            st.session_state.app_initialized = True
+            st.rerun()
+        else:
+            st.stop()
+    
+    # Sidebar
+    render_sidebar()
+    
+    # Main chat interface
+    render_chat_interface()
 
 if __name__ == "__main__":
     main()

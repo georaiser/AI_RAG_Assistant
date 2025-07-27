@@ -1,6 +1,5 @@
 """
-Refactored backend with advanced RAG techniques.
-Simplified and removed code duplication.
+Backend with conditional query expansion and advanced RAG techniques.
 """
 
 import logging
@@ -20,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class QueryProcessor:
-    """Enhanced query processor with advanced RAG techniques."""
+    """Query processor with configurable query expansion."""
     
     def __init__(self):
         self.llm = self._create_llm(config.TEMPERATURE)
-        self.query_llm = self._create_llm(0.05)  # Lower temperature for query expansion
+        self.query_llm = None  # Only create if query expansion is enabled
         self._chain = None
     
     def _create_llm(self, temperature: float) -> ChatOpenAI:
@@ -36,18 +35,23 @@ class QueryProcessor:
         )
     
     def _expand_query(self, query: str) -> str:
-        """Expand query with related terms."""
+        """Conditionally expand query based on config."""
+        if not config.ENABLE_QUERY_EXPANSION:
+            return query
+            
+        if self.query_llm is None:
+            self.query_llm = self._create_llm(0.05)
+            
         try:
             expansion_prompt = get_query_expansion_prompt()
             expansion_chain = expansion_prompt | self.query_llm
             result = expansion_chain.invoke({"query": query})
             
-            # Handle different content types
+            # Extract expanded query
             content = result.content
             if isinstance(content, list):
                 content = "\n".join(str(item) for item in content)
             
-            # Extract first valid expanded query
             expanded_queries = [
                 q.strip() for q in content.split('\n') 
                 if q.strip() and not q.startswith('#')
@@ -70,14 +74,14 @@ class QueryProcessor:
                 retriever=retriever,
                 combine_docs_chain_kwargs={"prompt": prompt},
                 return_source_documents=True,
-                verbose=True
+                verbose=False  # Reduced verbosity for speed
             )
             logger.info("RAG chain initialized")
         
         return self._chain
     
     def _format_chat_history(self, messages: List[Dict[str, str]]) -> List[Tuple[str, str]]:
-        """Format chat history for LangChain."""
+        """Simplified chat history formatting."""
         formatted_history = []
         
         # Skip welcome message and current user message
@@ -96,11 +100,10 @@ class QueryProcessor:
                         assistant_msg['content']
                     ))
         
-        logger.info(f"Formatted {len(formatted_history)} chat history pairs")
         return formatted_history
     
     def _extract_sources(self, documents: List[Document]) -> List[str]:
-        """Extract unique source information from documents."""
+        """Extract source information from documents."""
         sources = set()
         for doc in documents:
             if hasattr(doc, 'metadata') and doc.metadata:
@@ -110,14 +113,14 @@ class QueryProcessor:
         return list(sources)
     
     def process_query(self, query: str, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        """Process query with enhanced RAG techniques."""
+        """Process query with optimized RAG."""
         try:
-            # Expand query and format history
+            # Conditionally expand query
             expanded_query = self._expand_query(query)
             chat_history = self._format_chat_history(messages)
             
-            logger.info(f"Expanded query: '{expanded_query}'")
-            logger.info(f"Using {len(chat_history)} conversation pairs")
+            if config.DEBUG and config.ENABLE_QUERY_EXPANSION:
+                logger.info(f"Query expansion: '{query}' -> '{expanded_query}'")
             
             # Process with chain
             chain = self._get_chain()
@@ -136,7 +139,7 @@ class QueryProcessor:
                     "completion_tokens": callback.completion_tokens,
                     "total_cost_usd": callback.total_cost,
                     "source_documents": result.get("source_documents", []),
-                    "expanded_query": expanded_query
+                    "expanded_query": expanded_query if config.ENABLE_QUERY_EXPANSION else query
                 }
                 
         except Exception as e:

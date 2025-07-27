@@ -1,6 +1,5 @@
 """
-Simplified document loader - faster and easier to maintain.
-Removed unnecessary abstractions while keeping multi-format support.
+Document loader for single file processing with table extraction.
 """
 import logging
 from typing import List, Dict, Any
@@ -41,10 +40,7 @@ def create_chunks(pages_data: List[Dict[str, Any]]) -> List[Document]:
             metadata = {
                 "page": page_data["page"],
                 "source": page_data["source"],
-                "file_type": page_data.get("file_type", "unknown"),
-                "chunk_id": f"page_{page_data['page']}_chunk_{i}",
-                "chunk_index": i,
-                "total_chunks": len(chunks)
+                "file_type": page_data.get("file_type", "unknown")
             }
             
             # Create document
@@ -56,10 +52,10 @@ def create_chunks(pages_data: List[Dict[str, Any]]) -> List[Document]:
 
 
 class PDFLoader:
-    """PDF document loader."""
+    """PDF document loader with table extraction."""
     
     def load(self, file_path: Path) -> List[Dict[str, Any]]:
-        """Load PDF with text and basic table extraction."""
+        """Load PDF with text and table extraction."""
         logger.info(f"Loading PDF: {file_path}")
         pages_data = []
         
@@ -98,10 +94,6 @@ class PDFLoader:
                         "source": file_path.name,
                         "file_type": "pdf"
                     })
-                    
-                    # Log progress for large files
-                    if page_num % 20 == 0:
-                        logger.info(f"Processed {page_num}/{len(pdf.pages)} pages")
         
         except Exception as e:
             logger.error(f"Error loading PDF {file_path}: {e}")
@@ -112,7 +104,7 @@ class PDFLoader:
 
 
 class TextLoader:
-    """Text file loader for .txt, .md, .rst files."""
+    """Simple text file loader."""
     
     def load(self, file_path: Path) -> List[Dict[str, Any]]:
         """Load plain text files."""
@@ -138,10 +130,10 @@ class TextLoader:
 
 
 class DocxLoader:
-    """Word document loader."""
+    """Word document loader with table extraction."""
     
     def load(self, file_path: Path) -> List[Dict[str, Any]]:
-        """Load Word documents."""
+        """Load Word documents with table extraction."""
         logger.info(f"Loading Word document: {file_path}")
         
         try:
@@ -183,7 +175,7 @@ class DocxLoader:
 
 
 class DocumentLoader:
-    """Main document loader that delegates to specific loaders."""
+    """Document loader."""
     
     def __init__(self):
         self.loaders = {
@@ -194,17 +186,17 @@ class DocumentLoader:
             '.docx': DocxLoader(),
             '.dotx': DocxLoader()
         }
-        self.supported_extensions = list(self.loaders.keys())
     
     def get_loader(self, file_path: Path):
         """Get appropriate loader for file type."""
         ext = file_path.suffix.lower()
         if ext not in self.loaders:
-            raise ValueError(f"Unsupported file type: {ext}. Supported: {self.supported_extensions}")
+            supported = list(self.loaders.keys())
+            raise ValueError(f"Unsupported file type: {ext}. Supported: {supported}")
         return self.loaders[ext]
     
     def load_and_process_document(self, file_path: Path) -> List[Document]:
-        """Load and process any supported document type."""
+        """Load and process single document."""
         file_path = Path(file_path)
         
         if not file_path.exists():
@@ -223,35 +215,12 @@ class DocumentLoader:
         
         logger.info(f"Successfully processed {file_path}: {len(documents)} chunks")
         return documents
-    
-    def load_data(self, path: Path) -> List[str]:
-        """Legacy function - returns just text content."""
-        try:
-            docs = self.load_and_process_document(path)
-            return [doc.page_content for doc in docs]
-        except Exception as e:
-            logger.error(f"Error in load_data: {e}")
-            return []
 
 
 class DocumentLoaderFactory:
-    """Simple factory for supported extensions."""
+    """Factory for supported extensions."""
     
     @staticmethod
     def supported_extensions() -> List[str]:
         """Return supported file extensions."""
         return ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
-    
-    @staticmethod
-    def create_loader(file_path: Path):
-        """Create appropriate loader for file type."""
-        ext = file_path.suffix.lower()
-        if ext == '.pdf':
-            return PDFLoader()
-        elif ext in ['.txt', '.md', '.rst']:
-            return TextLoader()
-        elif ext in ['.docx', '.dotx']:
-            return DocxLoader()
-        else:
-            supported = DocumentLoaderFactory.supported_extensions()
-            raise ValueError(f"Unsupported file type: {ext}. Supported: {supported}")

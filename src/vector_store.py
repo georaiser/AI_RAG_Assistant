@@ -1,5 +1,5 @@
 """
-Vector store with semantic search.
+Vector store.
 """
 
 import logging
@@ -30,7 +30,7 @@ class VectorStore:
             logger.info(f"Using HuggingFace embeddings: {config.HF_EMBEDDING_MODEL}")
             return HuggingFaceEmbeddings(
                 model_name=config.HF_EMBEDDING_MODEL,
-                model_kwargs={'device': 'cpu'}, # 'cuda' if torch.cuda.is_available() else 'cpu'
+                model_kwargs={'device': 'cpu'}, # Use 'cuda' for GPU
                 encode_kwargs={'normalize_embeddings': True}
             )
         else:
@@ -45,12 +45,6 @@ class VectorStore:
         if not documents:
             logger.error("No documents provided")
             return None
-        
-        # Validate documents
-        for i, doc in enumerate(documents):
-            if not isinstance(doc, Document):
-                logger.error(f"Item {i} is not a Document: {type(doc)}")
-                return None
         
         try:
             self.persist_directory.mkdir(parents=True, exist_ok=True)
@@ -89,7 +83,7 @@ class VectorStore:
             return None
     
     def get_retriever(self, k: Optional[int] = None):
-        """Get retriever."""
+        """Get retriever with optimized search configuration."""
         if not self._vector_store:
             logger.error("Vector store not initialized")
             return None
@@ -107,16 +101,15 @@ class VectorStore:
                 }
             )
         elif config.SEARCH_TYPE == "similarity_score_threshold":
-            # Score threshold search
             return self._vector_store.as_retriever(
                 search_type="similarity_score_threshold",
                 search_kwargs={
                     "k": k,
-                    "score_threshold": getattr(config, 'SCORE_THRESHOLD', 0.5)
+                    "score_threshold": config.SCORE_THRESHOLD
                 }
             )
         else:
-            # Standard similarity search
+            # Standard similarity search (fastest)
             return self._vector_store.as_retriever(
                 search_type="similarity",
                 search_kwargs={"k": k}
