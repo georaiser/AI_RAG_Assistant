@@ -40,7 +40,7 @@ class QueryProcessor:
             return query
             
         if self.query_llm is None:
-            self.query_llm = self._create_llm(0.05)
+            self.query_llm = self._create_llm(config.TEMPERATURE_EXPANSION)
             
         try:
             expansion_prompt = get_query_expansion_prompt()

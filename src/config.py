@@ -74,6 +74,7 @@ class Config:
 
     # Query expansion (enable/disable)
     ENABLE_QUERY_EXPANSION: bool = True
+    TEMPERATURE_EXPANSION: float = 0.5
         
     # ===================
     # APP SETTINGS

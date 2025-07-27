@@ -75,18 +75,3 @@ def get_query_expansion_prompt() -> PromptTemplate:
 # Summary:""",
 #         input_variables=["content"]
 #     )
-
-# def get_followup_prompt() -> PromptTemplate:
-#     """Get prompt for generating follow-up questions (optional feature)."""
-#     return PromptTemplate(
-#         template="""Based on this document content and the user's question, suggest 2-3 relevant follow-up questions they might want to ask:
-
-# Document Content: {context}
-# User Question: {question}
-# Bot Response: {response}
-
-# Generate follow-up questions that would help the user explore the topic further:
-
-# Follow-up questions:""",
-#         input_variables=["context", "question", "response"]
-#     )
