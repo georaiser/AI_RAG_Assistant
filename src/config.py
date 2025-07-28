@@ -22,7 +22,7 @@ class Config:
     # ===================
     # DOCUMENT SETTINGS
     # ===================
-    DOCUMENT_PATH: Path = Path("data/python-basics-sample-chapters.pdf")
+    DOCUMENT_PATH: Path = Path("data/The_Essential_Physics_of_Medical_Imaging.pdf")
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
