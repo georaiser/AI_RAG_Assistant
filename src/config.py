@@ -24,7 +24,9 @@ class Config:
     # ===================
     #DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "python-basics-sample-chapters.pdf"
 
-    DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "The_Essential_Physics_of_Medical_Imaging.pdf"
+    #DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "The_Essential_Physics_of_Medical_Imaging.pdf"
+
+    DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "cleaned.pdf"
 
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
