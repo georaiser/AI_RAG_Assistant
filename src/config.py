@@ -22,7 +22,7 @@ class Config:
     # ===================
     # DOCUMENT SETTINGS
     # ===================
-    DOCUMENT_PATH: Path = Path("data/The_Essential_Physics_of_Medical_Imaging.pdf")
+    DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "python-basics-sample-chapters.pdf"
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
@@ -47,7 +47,7 @@ class Config:
     # "text-embedding-3-large"  # Better quality
 
     # HuggingFace Embeddings
-    HF_EMBEDDING_MODEL: str = "BAAI/bge-large-en-v1.5"
+    HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     # Alternatives:
     # "sentence-transformers/all-MiniLM-L6-v2"   # Fast & good
     # "sentence-transformers/all-mpnet-base-v2"  # Better quality

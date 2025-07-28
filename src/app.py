@@ -1,5 +1,5 @@
 """
-Clean Streamlit app for Docu Bot - Production ready without debug features.
+Clean Streamlit app for Docu Bot.
 """
 
 import streamlit as st
@@ -21,7 +21,7 @@ from src.config import config
 # Page config
 st.set_page_config(
     page_title="Docu Bot",
-    page_icon="📚🤖",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -142,11 +142,12 @@ def initialize_session_state() -> None:
         
         doc_status = f"**Document:** {doc_info['name']}" if doc_info["exists"] else "**Document:** Not found"
         
-        welcome = f"""**Welcome to DocuPy Bot!** 🤖
+        welcome = f"""**Welcome to Docu Bot!** 🤖
 
 I'm your intelligent document assistant powered by advanced RAG technology.
 
 {doc_status}
+
 **Supported formats:** {supported}
 
 **What I can help with:**
@@ -230,28 +231,6 @@ def render_chat_interface():
                     st.error(error_msg)
                     st.session_state.messages.append({"role": "assistant", "content": error_msg})
 
-def render_helpful_suggestions():
-    """Render helpful suggestions for users."""
-    if st.session_state.query_count == 0:  # Only show for new users
-        with st.expander("💡 Helpful Tips for Better Results"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("""
-                **Ask Specific Questions:**
-                - "How do I create a Python function?"
-                - "What are the different data types?"
-                - "Show me an example of a for loop"
-                """)
-                
-            with col2:
-                st.markdown("""
-                **Follow-up Questions:**
-                - "Can you explain that in more detail?"
-                - "What are some examples?"
-                - "How does this relate to what we discussed?"
-                """)
-
 def main():
     """Main application entry point."""
     initialize_session_state()
@@ -273,9 +252,6 @@ def main():
     
     # Sidebar
     render_sidebar()
-    
-    # Helpful suggestions
-    render_helpful_suggestions()
     
     # Main chat interface
     render_chat_interface()
