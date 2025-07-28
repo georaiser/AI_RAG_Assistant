@@ -30,7 +30,7 @@ class VectorStore:
             logger.info(f"Using HuggingFace embeddings: {config.HF_EMBEDDING_MODEL}")
             return HuggingFaceEmbeddings(
                 model_name=config.HF_EMBEDDING_MODEL,
-                model_kwargs={'device': 'cpu'}, # Use 'cuda' for GPU
+                model_kwargs={'device': 'cpu'}, # Use 'cuda' for GPU or 'cpu' for CPU
                 encode_kwargs={'normalize_embeddings': True}
             )
         else:
