@@ -1,5 +1,6 @@
 """
 Application initialization and startup logic.
+Support summarization functionality.
 """
 
 import streamlit as st
@@ -7,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from src.backend import handle_query
+from src.backend import handle_query, generate_document_summary
 from src.data_loader import DocumentLoader
 from src.vector_store import initialize_vector_store, load_vector_store
 from src.config import config
@@ -83,6 +84,10 @@ class AppLoader:
     def process_query(self, user_input: str, messages: list) -> dict:
         """Process user query through the backend."""
         return handle_query(user_input, messages)
+    
+    def generate_summary(self) -> dict:
+        """Generate document summary through the backend."""
+        return generate_document_summary()
     
     def get_document_info(self) -> dict:
         """Get information about the loaded document."""
