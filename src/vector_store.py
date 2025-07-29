@@ -4,7 +4,6 @@ Vector store.
 
 import logging
 from typing import List, Optional
-from pathlib import Path
 
 from langchain_openai import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -15,6 +14,7 @@ from pydantic import SecretStr
 from src.config import config
 
 logger = logging.getLogger(__name__)
+
 
 class VectorStore:
     """Vector store manager."""
@@ -83,7 +83,7 @@ class VectorStore:
             return None
     
     def get_retriever(self, k: Optional[int] = None):
-        """Get retriever with optimized search configuration."""
+        """Get retriever."""
         if not self._vector_store:
             logger.error("Vector store not initialized")
             return None

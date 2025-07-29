@@ -22,12 +22,8 @@ class Config:
     # ===================
     # DOCUMENT SETTINGS
     # ===================
-    #DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "python-basics-sample-chapters.pdf"
-
-    #DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "The_Essential_Physics_of_Medical_Imaging.pdf"
-
-    DOCUMENT_PATH: Path = PROJECT_ROOT / "data" / "cleaned.pdf"
-
+    DOCUMENT_PATH: Path = Path("data/cleaned.pdf")
+    
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
     
@@ -93,15 +89,6 @@ class Config:
     
     # Score threshold setting (more permissive)
     SCORE_THRESHOLD: float = 0.3  # Lower threshold for more results
-    
-    # Fallback retrieval settings
-    ENABLE_FALLBACK_SEARCH: bool = True
-    FALLBACK_K: int = 15  # Even more documents for fallback
-    
-    # Query expansion settings
-    ENABLE_QUERY_EXPANSION: bool = True
-    TEMPERATURE_EXPANSION: float = 0.4  # Slightly higher for creativity
-    MAX_QUERY_VARIATIONS: int = 3  # Multiple query variations
         
     # ===================
     # APP SETTINGS
@@ -110,86 +97,25 @@ class Config:
     BOT_NAME: str = "Docu Bot"
     DEBUG: bool = True  # Enable debug mode for detailed logs
     
-    # Response improvement settings
-    ENABLE_CONTEXT_ENHANCEMENT: bool = True
-    MIN_CONTEXT_LENGTH: int = 100  # Minimum context to attempt answer
-    
     # ===================
     # ESSENTIAL VALIDATION
     # ===================
+    
     @classmethod
-    def validate_essentials(cls) -> bool:
-        """Validate only essential requirements."""
-        if not cls.OPENAI_API_KEY:
-            print("Error: OPENAI_API_KEY is required")
-            return False
-        return True
+    def validate(cls) -> bool:
+        """Validate essential requirements."""
+        return bool(cls.OPENAI_API_KEY)
     
     @classmethod
     def setup_directories(cls) -> None:
         """Create necessary directories."""
         cls.DATA_DIR.mkdir(exist_ok=True)
         cls.VECTOR_STORE_PATH.mkdir(exist_ok=True)
-    
-    @classmethod
-    def get_embedding_config(cls) -> dict:
-        """Get embedding configuration."""
-        if cls.EMBEDDING_TYPE == "openai":
-            return {
-                "type": "openai",
-                "model": cls.OPENAI_EMBEDDING_MODEL,
-                "api_key": cls.OPENAI_API_KEY
-            }
-        else:
-            return {
-                "type": "huggingface",
-                "model": cls.HF_EMBEDDING_MODEL
-            }
-    
-    @classmethod
-    def get_retrieval_config(cls) -> dict:
-        """Get optimized retrieval configuration."""
-        base_config = {
-            "k": cls.RETRIEVAL_K,
-            "search_type": cls.SEARCH_TYPE
-        }
-        
-        if cls.SEARCH_TYPE == "mmr":
-            base_config.update({
-                "fetch_k": cls.FETCH_K,
-                "lambda_mult": cls.LAMBDA_MULT
-            })
-        elif cls.SEARCH_TYPE == "similarity_score_threshold":
-            base_config.update({
-                "score_threshold": cls.SCORE_THRESHOLD
-            })
-        
-        return base_config
 
-
-# Global configuration instance
 config = Config()
 
-# Essential validation only
-if __name__ != "__main__":
-    if not config.validate_essentials():
-        exit(1)
-    config.setup_directories()
+if not config.validate():
+    print("Error: OPENAI_API_KEY is required")
+    exit(1)
 
-# For development/debugging
-if __name__ == "__main__":
-    print("=" * 60)
-    print("DOCUPY BOT - IMPROVED CONFIGURATION")
-    print("=" * 60)
-    print(f"Model: {config.MODEL_NAME}")
-    print(f"Temperature: {config.TEMPERATURE}")
-    print(f"Embedding: {config.EMBEDDING_TYPE}")
-    print(f"Document Path: {config.DOCUMENT_PATH}")
-    print(f"Chunk Size: {config.CHUNK_SIZE}")
-    print(f"Chunk Overlap: {config.CHUNK_OVERLAP}")
-    print(f"Retrieval K: {config.RETRIEVAL_K}")
-    print(f"Search Type: {config.SEARCH_TYPE}")
-    print(f"Query Expansion: {config.ENABLE_QUERY_EXPANSION}")
-    print(f"Fallback Search: {config.ENABLE_FALLBACK_SEARCH}")
-    print(f"Debug Mode: {config.DEBUG}")
-    print("=" * 60)
+config.setup_directories()
