@@ -1,14 +1,17 @@
 """
-Configurations.
+Configurations with simplified validation and error handling.
 """
 
 import os
+import logging
 from pathlib import Path
-from typing import List, Literal
+from typing import List, Literal, Optional
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class Config:
 
@@ -22,18 +25,30 @@ class Config:
     # ===================
     # DOCUMENT SETTINGS
     # ===================
-    DOCUMENT_PATH: Path = Path("data/cleaned.pdf")
+    #DOCUMENT_PATH: Path = Path("data/cleaned.pdf")
+    DOCUMENT_PATH: Path = Path("data/python-basics-sample-chapters.pdf")
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
+    
+    # File size limits (in MB)
+    MAX_FILE_SIZE_MB: int = 50
+    WARN_FILE_SIZE_MB: int = 10
     
     # ===================
     # AI MODEL SETTINGS
     # ===================
     # OpenAI Configuration
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    MODEL_NAME: str = "gpt-3.5-turbo"
-    TEMPERATURE: float = 0.3  # Lower for more consistent answers
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
+    TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.3"))
+    
+    # Alternative models for different use cases
+    AVAILABLE_MODELS: List[str] = [
+        "gpt-3.5-turbo",
+        "gpt-4",
+        "gpt-4-turbo-preview"
+    ]
     
     # ===================
     # EMBEDDING SETTINGS
@@ -41,25 +56,29 @@ class Config:
     EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
     
     # OpenAI Embeddings
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    # Alternatives:
-    # "text-embedding-3-small"  # Fast & good
-    # "text-embedding-3-large"  # Better quality
+    OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    AVAILABLE_OPENAI_EMBEDDINGS: List[str] = [
+        "text-embedding-3-small",   # Fast & good
+        "text-embedding-3-large",   # Better quality
+        "text-embedding-ada-002"    # Legacy but reliable
+    ]
 
     # HuggingFace Embeddings
-    HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    # Alternatives:
-    # "sentence-transformers/all-MiniLM-L6-v2"   # Fast & good
-    # "sentence-transformers/all-mpnet-base-v2"  # Better quality
-    # "BAAI/bge-small-en-v1.5"  # Excellent for retrieval
-    # "BAAI/bge-large-en-v1.5"  # Best quality
-            
+    HF_EMBEDDING_MODEL: str = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    AVAILABLE_HF_EMBEDDINGS: List[str] = [
+        "sentence-transformers/all-MiniLM-L6-v2",   # Fast & good
+        "sentence-transformers/all-mpnet-base-v2",  # Better quality
+        "BAAI/bge-small-en-v1.5",                   # Excellent for retrieval
+        "BAAI/bge-large-en-v1.5"                    # Best quality
+    ]
+    
     # ===================
-    # IMPROVED TEXT PROCESSING
+    # TEXT PROCESSING SETTINGS
     # ===================
-    CHUNK_SIZE: int = 1500  # Increased for better context
-    CHUNK_OVERLAP: int = 300  # Increased overlap for better continuity
-    # Better separators for technical documents
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1500"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "300"))
+    
+    # Improved separators for technical documents
     SEPARATORS: List[str] = [
         "\n\n\n",  # Multiple line breaks
         "\n\n",    # Paragraph breaks
@@ -74,48 +93,179 @@ class Config:
     ]
     
     # ===================
-    # ENHANCED RETRIEVAL SETTINGS
+    # RETRIEVAL SETTINGS
     # ===================
-    RETRIEVAL_K: int = 12  # Increased for better coverage
-    SEARCH_TYPE: str = "similarity"  # More reliable than MMR for most cases
-    # Alternatives:
-    # "similarity"  # Use similarity search for most cases
-    # "mmr"  # Use MMR for diversity
-    # "similarity_score_threshold"  # Use score threshold for filtering
-
-    # MMR settings (if using MMR)
-    FETCH_K: int = 25  # Increased for better selection
-    LAMBDA_MULT: float = 0.7  # Higher diversity
+    RETRIEVAL_K: int = int(os.getenv("RETRIEVAL_K", "12"))
+    SEARCH_TYPE: str = os.getenv("SEARCH_TYPE", "similarity")
     
-    # Score threshold setting (more permissive)
-    SCORE_THRESHOLD: float = 0.3  # Lower threshold for more results
+    # Available search types
+    AVAILABLE_SEARCH_TYPES: List[str] = [
+        "similarity",
+        "mmr", 
+        "similarity_score_threshold"
+    ]
+
+    # MMR settings
+    FETCH_K: int = int(os.getenv("FETCH_K", "25"))
+    LAMBDA_MULT: float = float(os.getenv("LAMBDA_MULT", "0.7"))
+    
+    # Score threshold setting
+    SCORE_THRESHOLD: float = float(os.getenv("SCORE_THRESHOLD", "0.3"))
         
     # ===================
     # APP SETTINGS
     # ===================
-    APP_TITLE: str = "Docu Bot"
-    BOT_NAME: str = "Docu Bot"
-    DEBUG: bool = True  # Enable debug mode for detailed logs
+    APP_TITLE: str = os.getenv("APP_TITLE", "Docu Bot")
+    BOT_NAME: str = os.getenv("BOT_NAME", "Docu Bot")
+    DEBUG: bool = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+    
+    # Logging settings
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FILE: Optional[str] = os.getenv("LOG_FILE", None)
+    
+    # Performance settings
+    MAX_TOKENS_PER_REQUEST: int = int(os.getenv("MAX_TOKENS_PER_REQUEST", "4000"))
+    TIMEOUT_SECONDS: int = int(os.getenv("TIMEOUT_SECONDS", "30"))
     
     # ===================
-    # ESSENTIAL VALIDATION
+    # SIMPLIFIED VALIDATION
     # ===================
     
     @classmethod
     def validate(cls) -> bool:
-        """Validate essential requirements."""
-        return bool(cls.OPENAI_API_KEY)
+        """Simplified validation - returns True if config is usable."""
+        
+        # Critical: API key must exist
+        if not cls.OPENAI_API_KEY:
+            logger.error("OPENAI_API_KEY is required")
+            return False
+        
+        # Critical: Basic numeric validations
+        if cls.CHUNK_SIZE <= 0:
+            logger.error("CHUNK_SIZE must be positive")
+            return False
+            
+        if cls.CHUNK_OVERLAP >= cls.CHUNK_SIZE:
+            logger.error("CHUNK_OVERLAP must be less than CHUNK_SIZE")
+            return False
+            
+        if cls.RETRIEVAL_K <= 0:
+            logger.error("RETRIEVAL_K must be positive")
+            return False
+        
+        # Validate temperature range
+        if not (0.0 <= cls.TEMPERATURE <= 2.0):
+            logger.warning(f"TEMPERATURE {cls.TEMPERATURE} is outside recommended range [0.0, 2.0]")
+        
+        # Validate embedding type
+        if cls.EMBEDDING_TYPE not in ["openai", "huggingface"]:
+            logger.error(f"EMBEDDING_TYPE must be 'openai' or 'huggingface', got: {cls.EMBEDDING_TYPE}")
+            return False
+        
+        # Validate search type
+        if cls.SEARCH_TYPE not in cls.AVAILABLE_SEARCH_TYPES:
+            logger.error(f"SEARCH_TYPE must be one of {cls.AVAILABLE_SEARCH_TYPES}, got: {cls.SEARCH_TYPE}")
+            return False
+        
+        # Critical: Check if document exists (warn only)
+        if not cls.DOCUMENT_PATH.exists():
+            logger.warning(f"Document not found at {cls.DOCUMENT_PATH}")
+        
+        # Critical: Check file size
+        if cls.DOCUMENT_PATH.exists():
+            size_mb = cls.DOCUMENT_PATH.stat().st_size / (1024 * 1024)
+            if size_mb > cls.MAX_FILE_SIZE_MB:
+                logger.error(f"Document too large: {size_mb:.1f}MB > {cls.MAX_FILE_SIZE_MB}MB")
+                return False
+            elif size_mb > cls.WARN_FILE_SIZE_MB:
+                logger.warning(f"Large document: {size_mb:.1f}MB > {cls.WARN_FILE_SIZE_MB}MB")
+        
+        logger.info("Configuration validation passed")
+        return True
     
     @classmethod
-    def setup_directories(cls) -> None:
+    def setup_directories(cls) -> bool:
         """Create necessary directories."""
-        cls.DATA_DIR.mkdir(exist_ok=True)
-        cls.VECTOR_STORE_PATH.mkdir(exist_ok=True)
+        try:
+            cls.DATA_DIR.mkdir(exist_ok=True)
+            cls.VECTOR_STORE_PATH.mkdir(exist_ok=True)
+            logger.debug(f"Directories created: {cls.DATA_DIR}, {cls.VECTOR_STORE_PATH}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create directories: {e}")
+            return False
+    
+    @classmethod
+    def setup_logging(cls) -> None:
+        """Setup basic logging."""
+        try:
+            log_level = getattr(logging, cls.LOG_LEVEL.upper(), logging.INFO)
+        except (AttributeError, ValueError):
+            log_level = logging.INFO
+            logger.warning(f"Invalid LOG_LEVEL '{cls.LOG_LEVEL}', using INFO")
+        
+        # Configure logging format
+        log_format = "%(asctime)s - %(levelname)s - %(message)s"
+        
+        if cls.LOG_FILE:
+            try:
+                logging.basicConfig(
+                    level=log_level,
+                    format=log_format,
+                    filename=cls.LOG_FILE,
+                    filemode='a',
+                    force=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to setup file logging: {e}")
+                # Fallback to console logging
+                logging.basicConfig(level=log_level, format=log_format, force=True)
+        else:
+            logging.basicConfig(level=log_level, format=log_format, force=True)
+        
+        # Suppress noisy logs
+        for logger_name in ["chromadb", "httpx", "openai", "langchain", "urllib3"]:
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
+    
+    @classmethod
+    def get_summary(cls) -> dict:
+        """Get basic configuration summary."""
+        return {
+            "model": cls.MODEL_NAME,
+            "embedding_type": cls.EMBEDDING_TYPE,
+            "chunk_size": cls.CHUNK_SIZE,
+            "retrieval_k": cls.RETRIEVAL_K,
+            "search_type": cls.SEARCH_TYPE,
+            "document_exists": cls.DOCUMENT_PATH.exists(),
+            "document_path": str(cls.DOCUMENT_PATH)
+        }
 
+
+# Create global config instance
 config = Config()
 
-if not config.validate():
-    print("Error: OPENAI_API_KEY is required")
-    exit(1)
+# Simplified initialization
+def initialize_config() -> bool:
+    """Initialize configuration with minimal setup."""
+    try:
+        config.setup_logging()
+        
+        if not config.validate():
+            return False
+            
+        if not config.setup_directories():
+            return False
+        
+        if config.DEBUG:
+            logger.info(f"Config: {config.get_summary()}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Configuration failed: {e}")
+        return False
 
-config.setup_directories()
+# Initialize configuration
+if not initialize_config():
+    print("ERROR: Configuration failed. Check logs.")
+    exit(1)
