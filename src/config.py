@@ -25,8 +25,8 @@ class Config:
     # ===================
     # DOCUMENT SETTINGS
     # ===================
-    #DOCUMENT_PATH: Path = Path("data/cleaned.pdf")
-    DOCUMENT_PATH: Path = Path("data/python-basics-sample-chapters.pdf")
+    DOCUMENT_PATH: Path = Path("data/cleaned.pdf")
+    #DOCUMENT_PATH: Path = Path("data/python-basics-sample-chapters.pdf")
     
     # Supported file formats
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
@@ -40,8 +40,8 @@ class Config:
     # ===================
     # OpenAI Configuration
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
-    TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.3"))
+    MODEL_NAME: str = "gpt-3.5-turbo"
+    TEMPERATURE: float = 0.4
     
     # Alternative models for different use cases
     AVAILABLE_MODELS: List[str] = [
@@ -56,7 +56,7 @@ class Config:
     EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
     
     # OpenAI Embeddings
-    OPENAI_EMBEDDING_MODEL: str = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     AVAILABLE_OPENAI_EMBEDDINGS: List[str] = [
         "text-embedding-3-small",   # Fast & good
         "text-embedding-3-large",   # Better quality
@@ -64,7 +64,7 @@ class Config:
     ]
 
     # HuggingFace Embeddings
-    HF_EMBEDDING_MODEL: str = os.getenv("HF_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     AVAILABLE_HF_EMBEDDINGS: List[str] = [
         "sentence-transformers/all-MiniLM-L6-v2",   # Fast & good
         "sentence-transformers/all-mpnet-base-v2",  # Better quality
@@ -75,8 +75,8 @@ class Config:
     # ===================
     # TEXT PROCESSING SETTINGS
     # ===================
-    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1500"))
-    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "300"))
+    CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1200"))
+    CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
     
     # Improved separators for technical documents
     SEPARATORS: List[str] = [
@@ -95,7 +95,7 @@ class Config:
     # ===================
     # RETRIEVAL SETTINGS
     # ===================
-    RETRIEVAL_K: int = int(os.getenv("RETRIEVAL_K", "12"))
+    RETRIEVAL_K: int = int(os.getenv("RETRIEVAL_K", "9"))
     SEARCH_TYPE: str = os.getenv("SEARCH_TYPE", "similarity")
     
     # Available search types
@@ -115,17 +115,16 @@ class Config:
     # ===================
     # APP SETTINGS
     # ===================
-    APP_TITLE: str = os.getenv("APP_TITLE", "Docu Bot")
-    BOT_NAME: str = os.getenv("BOT_NAME", "Docu Bot")
-    DEBUG: bool = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+    APP_TITLE: str = "Docu Assistant"
+    BOT_NAME: str = "Docu Assistant"
+    DEBUG: bool = True
     
     # Logging settings
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FILE: Optional[str] = os.getenv("LOG_FILE", None)
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: Optional[str] = None # "LOG_FILE.txt"  # Set to None for console only
     
     # Performance settings
-    MAX_TOKENS_PER_REQUEST: int = int(os.getenv("MAX_TOKENS_PER_REQUEST", "4000"))
-    TIMEOUT_SECONDS: int = int(os.getenv("TIMEOUT_SECONDS", "30"))
+    #MAX_TOKENS_PER_REQUEST: int = 4000
     
     # ===================
     # SIMPLIFIED VALIDATION
