@@ -1,7 +1,6 @@
 # backend.py
 """
-RAG Engine for document question-answering and summarization.
-Handles query processing, retrieval, and response generation with improved logging.
+Improved RAG Engine with better citation handling and source verification.
 """
 
 import logging
@@ -34,37 +33,43 @@ class RAGEngine:
     def process_query(self, query: str, chat_history: List[Dict]) -> Dict[str, Any]:
         """Process user query and return response with metadata."""
         if not self.vector_store:
-            logger.error("Vector store not available for query processing")
+            logger.error("Vector store not available")
             return self._error_response("Vector store not available")
         
         try:
-            logger.info(f"Processing query with {len(chat_history)} history messages")
+            logger.info(f"Processing query: {query[:100]}...")
             
             with get_openai_callback() as cb:
-                # Create retrieval chain
-                chain = ConversationalRetrievalChain.from_llm(
-                    llm=self.llm,
-                    retriever=self.vector_manager.get_retriever(),
-                    combine_docs_chain_kwargs={"prompt": self._create_prompt()},
-                    return_source_documents=True,
-                    verbose=False
+                # Get relevant documents first
+                retriever = self.vector_manager.get_retriever()
+                source_docs = retriever.get_relevant_documents(query)
+                
+                # Create enhanced context with source information
+                enhanced_context = self._create_enhanced_context(source_docs)
+                
+                # Format chat history
+                formatted_history = self._format_chat_history(chat_history)
+                
+                # Create prompt with enhanced context
+                prompt = PromptTemplate(
+                    template=SYSTEM_TEMPLATE,
+                    input_variables=["context", "chat_history", "question"]
                 )
                 
-                # Format chat history (exclude system messages and current query)
-                formatted_history = self._format_chat_history(chat_history)
-                logger.debug(f"Formatted chat history: {len(formatted_history)} pairs")
+                # Generate response
+                prompt_text = prompt.format(
+                    context=enhanced_context,
+                    chat_history=self._format_history_for_prompt(formatted_history),
+                    question=query
+                )
                 
-                # Get response
-                result = chain.invoke({
-                    "question": query,
-                    "chat_history": formatted_history
-                })
+                response = self.llm.invoke([HumanMessage(content=prompt_text)])
                 
-                logger.info(f"Query processed successfully. Tokens used: {cb.total_tokens}")
+                logger.info(f"Query processed. Tokens: {cb.total_tokens}")
                 
                 return {
-                    "answer": result["answer"],
-                    "source_documents": result.get("source_documents", []),
+                    "answer": response.content,
+                    "source_documents": source_docs,
                     "total_tokens": cb.total_tokens,
                     "prompt_tokens": cb.prompt_tokens,
                     "completion_tokens": cb.completion_tokens,
@@ -78,46 +83,31 @@ class RAGEngine:
     def generate_summary(self) -> Dict[str, Any]:
         """Generate comprehensive summary of all documents."""
         if not self.vector_store:
-            logger.error("Vector store not available for summary generation")
+            logger.error("Vector store not available")
             return self._error_response("Vector store not available")
         
         try:
-            logger.info("Starting document summary generation")
+            logger.info("Generating document summary")
             
             with get_openai_callback() as cb:
-                # Retrieve relevant documents for summary
                 retriever = self.vector_manager.get_retriever()
                 
-                # Use a comprehensive query to get diverse content
-                summary_query = "comprehensive technical overview documentation methods procedures data results"
+                # Get diverse content for summary
+                summary_query = "overview technical methods procedures data results implementation"
                 docs = retriever.get_relevant_documents(summary_query)
                 
                 logger.info(f"Retrieved {len(docs)} documents for summary")
                 
-                # Create summary prompt
-                summary_prompt = PromptTemplate(
-                    template=SUMMARY_TEMPLATE,
-                    input_variables=["context"]
-                )
-                
-                # Combine document content with better formatting
-                context_parts = []
-                for doc in docs:
-                    source = doc.metadata.get('source', 'Unknown')
-                    content_type = doc.metadata.get('content_type', 'text')
-                    
-                    if content_type == 'table':
-                        context_parts.append(f"[TABLE FROM {source}]\n{doc.page_content}\n")
-                    else:
-                        context_parts.append(f"[DOCUMENT: {source}]\n{doc.page_content}\n")
-                
-                context = "\n".join(context_parts)
+                # Create enhanced context
+                enhanced_context = self._create_enhanced_context(docs)
                 
                 # Generate summary
-                prompt_text = summary_prompt.format(context=context)
+                prompt = PromptTemplate(template=SUMMARY_TEMPLATE, input_variables=["context"])
+                prompt_text = prompt.format(context=enhanced_context)
+                
                 response = self.llm.invoke([HumanMessage(content=prompt_text)])
                 
-                logger.info(f"Summary generated successfully. Tokens used: {cb.total_tokens}")
+                logger.info(f"Summary generated. Tokens: {cb.total_tokens}")
                 
                 return {
                     "answer": response.content,
@@ -132,47 +122,68 @@ class RAGEngine:
             logger.error(f"Error generating summary: {e}")
             return self._error_response("Failed to generate summary")
     
-    def _create_prompt(self) -> PromptTemplate:
-        """Create prompt template for question answering."""
-        return PromptTemplate(
-            template=SYSTEM_TEMPLATE,
-            input_variables=["context", "chat_history", "question"]
-        )
+    def _create_enhanced_context(self, documents: List) -> str:
+        """Create enhanced context with proper source information."""
+        context_parts = []
+        
+        for doc in documents:
+            metadata = doc.metadata
+            source = metadata.get('source', 'Unknown')
+            content_type = metadata.get('content_type', 'text')
+            
+            # Create source header
+            if content_type == 'table':
+                if 'page' in metadata:
+                    header = f"[TABLE - Source: {source}, Page: {metadata['page']}]"
+                else:
+                    header = f"[TABLE - Source: {source}]"
+            else:
+                if 'page' in metadata:
+                    header = f"[DOCUMENT - Source: {source}, Page: {metadata['page']}]"
+                else:
+                    header = f"[DOCUMENT - Source: {source}]"
+            
+            context_parts.append(f"{header}\n{doc.page_content}\n")
+        
+        return "\n".join(context_parts)
     
     def _format_chat_history(self, messages: List[Dict]) -> List[Tuple[str, str]]:
-        """Format chat history for LangChain - improved role handling."""
+        """Format chat history for conversation chain."""
         formatted_history = []
         
-        # Filter out system/assistant welcome messages and current user message
-        chat_messages = []
-        for msg in messages[:-1]:  # Exclude current user message
-            if msg.get('role') in ['user', 'assistant'] and not self._is_welcome_message(msg):
-                chat_messages.append(msg)
+        # Filter and pair messages
+        chat_messages = [msg for msg in messages[:-1] if not self._is_welcome_message(msg)]
         
-        # Pair user and assistant messages
         for i in range(0, len(chat_messages), 2):
             if i + 1 < len(chat_messages):
                 user_msg = chat_messages[i]
                 assistant_msg = chat_messages[i + 1]
                 
-                # Ensure proper pairing
                 if user_msg.get('role') == 'user' and assistant_msg.get('role') == 'assistant':
-                    formatted_history.append((
-                        user_msg['content'],
-                        assistant_msg['content']
-                    ))
+                    formatted_history.append((user_msg['content'], assistant_msg['content']))
         
-        logger.debug(f"Formatted {len(formatted_history)} chat history pairs")
         return formatted_history
+    
+    def _format_history_for_prompt(self, history: List[Tuple[str, str]]) -> str:
+        """Format history for prompt template."""
+        if not history:
+            return "No previous conversation."
+        
+        formatted = []
+        for user_msg, assistant_msg in history[-3:]:  # Keep last 3 exchanges
+            formatted.append(f"User: {user_msg}")
+            formatted.append(f"Assistant: {assistant_msg}")
+        
+        return "\n".join(formatted)
     
     def _is_welcome_message(self, message: Dict) -> bool:
         """Check if message is a welcome message."""
         content = message.get('content', '').lower()
-        return 'welcome' in content and 'technical document assistant' in content
+        return 'welcome' in content or 'technical document assistant' in content
     
     def _error_response(self, message: str) -> Dict[str, Any]:
-        """Create error response with default values."""
-        error_response = {
+        """Create standardized error response."""
+        return {
             "answer": f"I apologize, but I encountered an error: {message}. Please try again.",
             "source_documents": [],
             "total_tokens": 0,
@@ -180,8 +191,6 @@ class RAGEngine:
             "completion_tokens": 0,
             "total_cost_usd": 0.0
         }
-        logger.warning(f"Returning error response: {message}")
-        return error_response
 
 
 class EmbeddingManager:
@@ -212,10 +221,3 @@ class EmbeddingManager:
         except Exception as e:
             logger.error(f"Error updating embedding model: {e}")
             return False
-
-
-# Convenience functions for backward compatibility
-def handle_query(query: str, messages: List[Dict]) -> Dict[str, Any]:
-    """Handle user query with RAG engine."""
-    engine = RAGEngine()
-    return engine.process_query(query, messages)

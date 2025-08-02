@@ -1,7 +1,7 @@
 # app.py
 """
-Main Streamlit application for Technical Document Assistant.
-Provides web interface for document querying and summarization.
+Simplified Streamlit application for Technical Document Assistant.
+Removed configuration options from sidebar as requested.
 """
 
 import streamlit as st
@@ -12,7 +12,7 @@ from typing import Dict, Any
 from config import Config
 from data_loader import load_data
 from vector_store import VectorStoreManager
-from backend import RAGEngine, EmbeddingManager
+from backend import RAGEngine
 
 # Configure logging
 logging.basicConfig(
@@ -57,31 +57,25 @@ class TechnicalDocumentApp:
         if not st.session_state.vector_store_ready:
             vector_manager = VectorStoreManager()
             
-            # Check if vector store exists
             if not Config.VECTOR_STORE_PATH.exists() or not any(Config.VECTOR_STORE_PATH.iterdir()):
-                logger.info("Initializing vector store for the first time")
-                st.info("Initializing vector store for the first time. This may take a few minutes...")
+                logger.info("Initializing vector store")
+                st.info("Initializing vector store. This may take a few minutes...")
                 
-                # Load and process documents
                 documents, file_info = load_data()
                 if documents:
                     if vector_manager.initialize_vector_store(documents):
                         st.session_state.vector_store_ready = True
                         st.session_state.file_info = file_info
                         logger.info("Vector store initialized successfully")
-                        st.success("Vector store initialized successfully!")
+                        st.success("Vector store initialized!")
                         st.rerun()
                     else:
                         st.error("Failed to initialize vector store")
-                        logger.error("Failed to initialize vector store")
                 else:
                     st.error("No documents found to process")
-                    logger.error("No documents found to process")
             else:
-                # Load existing vector store
                 if vector_manager.load_vector_store():
                     st.session_state.vector_store_ready = True
-                    # Try to load file info from previous session or regenerate
                     if not st.session_state.file_info:
                         try:
                             _, file_info = load_data()
@@ -91,7 +85,7 @@ class TechnicalDocumentApp:
                     logger.info("Vector store loaded successfully")
     
     def render_sidebar(self):
-        """Render sidebar with file information, statistics and summary."""
+        """Render simplified sidebar with file information and summary only."""
         with st.sidebar:
             # File Information
             st.header("📁 Loaded Documents")
@@ -103,12 +97,7 @@ class TechnicalDocumentApp:
                 if info.get("loaded_files"):
                     with st.expander("File Details", expanded=False):
                         for filename in info["loaded_files"]:
-                            stats = info["file_stats"].get(filename, {})
                             st.text(f"📄 {filename}")
-                            st.text(f"  Chunks: {stats.get('chunks', 0)}")
-                            st.text(f"  Tables: {stats.get('tables', 0)}")
-                            st.text(f"  Size: {stats.get('size_mb', 0):.1f} MB")
-                            st.text("")
             else:
                 st.text("No documents loaded yet")
             
@@ -128,7 +117,6 @@ class TechnicalDocumentApp:
             # Usage Statistics
             st.header("📊 Usage Statistics")
             
-            # Last query info
             st.subheader("Last Query")
             if st.session_state.last_query_info:
                 info = st.session_state.last_query_info
@@ -137,53 +125,9 @@ class TechnicalDocumentApp:
             else:
                 st.text("No queries processed yet")
             
-            # Session totals
             st.subheader("Session Total")
             st.text(f"Tokens: {st.session_state.total_tokens}")
             st.text(f"Cost: ${st.session_state.total_cost_usd:.6f}")
-            
-            st.divider()
-            
-            # Configuration options
-            self._render_config_options()
-    
-    def _render_config_options(self):
-        """Render configuration options in sidebar."""
-        st.header("⚙️ Configuration")
-        
-        # Embedding model selection
-        embedding_models = EmbeddingManager.get_available_models()
-        
-        model_type = st.selectbox(
-            "Embedding Type",
-            options=["OpenAI", "HuggingFace"],
-            index=0 if Config.EMBEDDING_TYPE == "openai" else 1
-        )
-        
-        available_models = embedding_models[model_type]
-        current_model = (Config.OPENAI_EMBEDDING_MODEL if model_type == "OpenAI" 
-                        else Config.HF_EMBEDDING_MODEL)
-        
-        model_name = st.selectbox(
-            "Embedding Model",
-            options=available_models,
-            index=available_models.index(current_model) if current_model in available_models else 0
-        )
-        
-        if st.button("Update Model", use_container_width=True):
-            if EmbeddingManager.update_embedding_model(model_type.lower(), model_name):
-                st.success("Model updated! Restart to apply changes.")
-        
-        # Search strategy
-        search_type = st.selectbox(
-            "Search Strategy",
-            options=Config.AVAILABLE_SEARCH_TYPES,
-            index=Config.AVAILABLE_SEARCH_TYPES.index(Config.SEARCH_TYPE)
-        )
-        
-        if search_type != Config.SEARCH_TYPE:
-            Config.SEARCH_TYPE = search_type
-            st.success(f"Search strategy: {search_type}")
     
     def render_chat_interface(self):
         """Render main chat interface."""
@@ -262,10 +206,7 @@ class TechnicalDocumentApp:
                 engine = RAGEngine()
                 response_data = engine.generate_summary()
                 
-                # Store summary separately from chat
                 st.session_state.document_summary = response_data['answer']
-                
-                # Update statistics
                 self._update_statistics(response_data)
                 
                 st.success("Document summary generated!")
@@ -291,8 +232,6 @@ class TechnicalDocumentApp:
     
     def _get_welcome_message(self) -> str:
         """Get welcome message for the application."""
-        doc_mode = "multiple documents" if Config.PROCESS_MULTIPLE_DOCUMENTS else "single document"
-        
         return f"""# Welcome to {Config.APP_TITLE}
 
 I'm your technical documentation assistant, specialized in analyzing and explaining technical documents with precision.
@@ -304,29 +243,21 @@ I'm your technical documentation assistant, specialized in analyzing and explain
 - 📋 **Documentation**: Comprehensive summaries with proper citations
 - 🎯 **Precise Answers**: All responses include proper source citations
 
-## Current Configuration:
-- **Processing**: {doc_mode}
-- **Embedding**: {Config.OPENAI_EMBEDDING_MODEL if Config.EMBEDDING_TYPE == 'openai' else Config.HF_EMBEDDING_MODEL}
-- **Search**: {Config.SEARCH_TYPE}
-
-Every answer includes proper citations like [Source: filename] or [Source: filename, Page: X]. Use the sidebar to view loaded documents and generate comprehensive summaries.
+Every answer includes proper citations like [Source: filename] or [Source: filename, Page: X]. 
+Use the sidebar to view loaded documents and generate comprehensive summaries.
 
 What technical topic would you like to explore?"""
-
+    
     def run(self):
         """Main application entry point."""
         logger.info("Starting Technical Document Assistant")
         
-        # Validate configuration
         if not Config.validate():
             st.error("Configuration validation failed. Please check your settings.")
-            logger.error("Configuration validation failed")
             return
         
-        # Setup directories
         if not Config.setup_directories():
             st.error("Failed to setup required directories.")
-            logger.error("Failed to setup directories")
             return
         
         # Render interface
