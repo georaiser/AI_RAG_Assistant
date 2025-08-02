@@ -34,7 +34,8 @@ class Config:
     TEMPERATURE: float = 0.2
     
     # Embedding settings
-    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "openai"
+    EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
+
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     
@@ -51,11 +52,11 @@ class Config:
     ]
 
     # Text processing settings
-    CHUNK_SIZE: int = 1200
+    CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     
     # Retrieval settings
-    RETRIEVAL_K: int = 6
+    RETRIEVAL_K: int = 9
     SEARCH_TYPE: str = "similarity"
     
     AVAILABLE_SEARCH_TYPES: List[str] = [

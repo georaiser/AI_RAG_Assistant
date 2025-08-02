@@ -1,6 +1,6 @@
 # prompts.py
 """
-System prompts for Technical Document Assistant.
+Improved system prompts for Technical Document Assistant.
 Cleaner, more focused prompts with proper citation handling.
 """
 
@@ -14,14 +14,21 @@ CONVERSATION HISTORY:
 
 QUESTION: {question}
 
-RESPONSE GUIDELINES:
-1. **Citations**: Always cite sources using [Source: filename] format
-2. **Technical Focus**: Provide precise technical explanations with examples
-3. **Code**: Include exact code snippets from documents when relevant
-4. **Clarity**: Explain complex concepts step-by-step
-5. **Completeness**: If information is missing, state this clearly
+CRITICAL CITATION RULES:
+- ALWAYS cite sources for every factual claim
+- Use EXACT format: [Source: filename] or [Source: filename, Page: X]
+- Page numbers are provided in the context headers - use them!
+- For tables: [Source: filename, Page: X] (table references)
+- Multiple sources: [Source: file1.pdf, Page: 5; file2.pdf, Page: 12]
 
-Provide a comprehensive technical answer with proper citations:"""
+RESPONSE GUIDELINES:
+1. **Technical Precision**: Provide detailed technical explanations
+2. **Source Verification**: Only cite sources that appear in the available context
+3. **Page References**: Include page numbers when available in the context
+4. **Code Examples**: Include exact code snippets with citations
+5. **Clear Structure**: Organize complex answers with proper sections
+
+Answer the question using ONLY the provided context and include proper citations with page numbers:"""
 
 SUMMARY_TEMPLATE = """Generate a comprehensive technical summary of the provided documents.
 

@@ -125,26 +125,40 @@ class RAGEngine:
     def _create_enhanced_context(self, documents: List) -> str:
         """Create enhanced context with proper source information."""
         context_parts = []
+        sources_used = set()
         
         for doc in documents:
             metadata = doc.metadata
             source = metadata.get('source', 'Unknown')
             content_type = metadata.get('content_type', 'text')
+            page = metadata.get('page')
+            file_type = metadata.get('file_type', 'unknown')
             
-            # Create source header
+            # Create detailed source header with page info
             if content_type == 'table':
-                if 'page' in metadata:
-                    header = f"[TABLE - Source: {source}, Page: {metadata['page']}]"
+                if page:
+                    header = f"[TABLE - Source: {source}, Page: {page}]"
+                    sources_used.add(f"{source}, Page: {page}")
                 else:
                     header = f"[TABLE - Source: {source}]"
+                    sources_used.add(source)
             else:
-                if 'page' in metadata:
-                    header = f"[DOCUMENT - Source: {source}, Page: {metadata['page']}]"
+                if page:
+                    header = f"[DOCUMENT - Source: {source}, Page: {page}]"
+                    sources_used.add(f"{source}, Page: {page}")
                 else:
                     header = f"[DOCUMENT - Source: {source}]"
+                    sources_used.add(source)
             
             context_parts.append(f"{header}\n{doc.page_content}\n")
         
+        # Add available sources summary at the beginning
+        if sources_used:
+            sources_list = sorted(list(sources_used))
+            sources_summary = "AVAILABLE SOURCES:\n" + "\n".join([f"- {src}" for src in sources_list]) + "\n\n"
+            context_parts.insert(0, sources_summary)
+        
+        logger.info(f"Created context with {len(sources_used)} unique sources")
         return "\n".join(context_parts)
     
     def _format_chat_history(self, messages: List[Dict]) -> List[Tuple[str, str]]:

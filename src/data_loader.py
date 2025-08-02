@@ -125,20 +125,27 @@ class DocumentLoader:
         documents = []
         
         with pdfplumber.open(file_path) as pdf:
+            logger.info(f"Processing PDF with {len(pdf.pages)} pages")
+            
             for page_num, page in enumerate(pdf.pages, 1):
                 page_text = page.extract_text()
                 if page_text and page_text.strip():
+                    # Add page marker to content for better tracking
+                    page_content = f"[PAGE {page_num}]\n{page_text}"
+                    
                     # Split page content into chunks
-                    chunks = self.text_splitter.split_text(page_text)
+                    chunks = self.text_splitter.split_text(page_content)
                     
                     for chunk_idx, chunk in enumerate(chunks):
                         metadata = {
                             "source": file_path.name,
                             "page": page_num,
                             "chunk_index": chunk_idx,
-                            "content_type": "text"
+                            "content_type": "text",
+                            "file_type": "pdf"
                         }
                         documents.append(LangchainDocument(page_content=chunk, metadata=metadata))
+                        logger.debug(f"Created chunk {chunk_idx} for page {page_num}")
                 
                 # Process tables on this page
                 tables = page.extract_tables()
@@ -146,15 +153,17 @@ class DocumentLoader:
                     if table and len(table) > 1:
                         try:
                             df = pd.DataFrame(table[1:], columns=table[0])
-                            table_content = f"Table {table_idx + 1} from page {page_num}:\n{df.to_string(index=False)}"
+                            table_content = f"[TABLE FROM PAGE {page_num}]\nTable {table_idx + 1}:\n{df.to_string(index=False)}"
                             
                             metadata = {
                                 "source": file_path.name,
                                 "page": page_num,
                                 "table_index": table_idx,
-                                "content_type": "table"
+                                "content_type": "table",
+                                "file_type": "pdf"
                             }
                             documents.append(LangchainDocument(page_content=table_content, metadata=metadata))
+                            logger.debug(f"Created table {table_idx} for page {page_num}")
                         except Exception as e:
                             logger.warning(f"Error processing table on page {page_num}: {e}")
         
