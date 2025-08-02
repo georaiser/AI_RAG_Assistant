@@ -1,0 +1,11 @@
+# OpenAI API Configuration
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Optional: Override default settings
+CHUNK_SIZE=1200
+CHUNK_OVERLAP=200
+RETRIEVAL_K=9
+SEARCH_TYPE=similarity
+FETCH_K=25
+LAMBDA_MULT=0.7
+SCORE_THRESHOLD=0.3
