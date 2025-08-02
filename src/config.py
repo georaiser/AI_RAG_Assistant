@@ -18,7 +18,6 @@ class Config:
 
     # Document settings
     SUPPORTED_FORMATS: List[str] = ['.pdf', '.txt', '.md', '.rst', '.docx', '.dotx']
-    MAX_FILE_SIZE_MB: int = 50
     
     # File processing mode
     PROCESS_MULTIPLE_DOCUMENTS: bool = True
@@ -32,7 +31,7 @@ class Config:
     # AI model settings
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     MODEL_NAME: str = "gpt-3.5-turbo"
-    TEMPERATURE: float = 0.3
+    TEMPERATURE: float = 0.2
     
     # Embedding settings
     EMBEDDING_TYPE: Literal["openai", "huggingface"] = "openai"
@@ -71,7 +70,7 @@ class Config:
     SCORE_THRESHOLD: float = 0.4
     
     # App settings
-    APP_TITLE: str = "RAG Document Assistant"
+    APP_TITLE: str = "Document Assistant"
         
     @classmethod
     def validate(cls) -> bool:

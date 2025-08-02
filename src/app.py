@@ -1,6 +1,6 @@
 # app.py
 """
-Main Streamlit application for RAG Document Assistant.
+Main Streamlit application for Technical Document Assistant.
 Provides web interface for document querying and summarization.
 """
 
@@ -15,7 +15,11 @@ from vector_store import VectorStoreManager
 from backend import RAGEngine, EmbeddingManager
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -25,7 +29,7 @@ st.set_page_config(
 )
 
 
-class StreamlitApp:
+class TechnicalDocumentApp:
     """Main Streamlit application class."""
     
     def __init__(self):
@@ -35,11 +39,13 @@ class StreamlitApp:
     def initialize_session_state(self):
         """Initialize session state variables."""
         defaults = {
-            "messages": [{"role": "bot", "content": self._get_welcome_message()}],
+            "messages": [{"role": "assistant", "content": self._get_welcome_message()}],
             "total_tokens": 0,
             "total_cost_usd": 0.0,
             "last_query_info": {},
-            "vector_store_ready": False
+            "vector_store_ready": False,
+            "file_info": {},
+            "document_summary": ""
         }
         
         for key, value in defaults.items():
@@ -53,52 +59,97 @@ class StreamlitApp:
             
             # Check if vector store exists
             if not Config.VECTOR_STORE_PATH.exists() or not any(Config.VECTOR_STORE_PATH.iterdir()):
+                logger.info("Initializing vector store for the first time")
                 st.info("Initializing vector store for the first time. This may take a few minutes...")
                 
                 # Load and process documents
-                documents = load_data()
+                documents, file_info = load_data()
                 if documents:
                     if vector_manager.initialize_vector_store(documents):
                         st.session_state.vector_store_ready = True
+                        st.session_state.file_info = file_info
+                        logger.info("Vector store initialized successfully")
                         st.success("Vector store initialized successfully!")
                         st.rerun()
                     else:
                         st.error("Failed to initialize vector store")
+                        logger.error("Failed to initialize vector store")
                 else:
                     st.error("No documents found to process")
+                    logger.error("No documents found to process")
             else:
-                st.session_state.vector_store_ready = True
+                # Load existing vector store
+                if vector_manager.load_vector_store():
+                    st.session_state.vector_store_ready = True
+                    # Try to load file info from previous session or regenerate
+                    if not st.session_state.file_info:
+                        try:
+                            _, file_info = load_data()
+                            st.session_state.file_info = file_info
+                        except Exception as e:
+                            logger.warning(f"Could not load file info: {e}")
+                    logger.info("Vector store loaded successfully")
     
     def render_sidebar(self):
-        """Render sidebar with statistics and summary option."""
+        """Render sidebar with file information, statistics and summary."""
         with st.sidebar:
-            st.header("Usage Statistics")
+            # File Information
+            st.header("📁 Loaded Documents")
+            if st.session_state.file_info:
+                info = st.session_state.file_info
+                st.metric("Total Files", info.get("total_files", 0))
+                st.metric("Total Chunks", info.get("total_chunks", 0))
+                
+                if info.get("loaded_files"):
+                    with st.expander("File Details", expanded=False):
+                        for filename in info["loaded_files"]:
+                            stats = info["file_stats"].get(filename, {})
+                            st.text(f"📄 {filename}")
+                            st.text(f"  Chunks: {stats.get('chunks', 0)}")
+                            st.text(f"  Tables: {stats.get('tables', 0)}")
+                            st.text(f"  Size: {stats.get('size_mb', 0):.1f} MB")
+                            st.text("")
+            else:
+                st.text("No documents loaded yet")
+            
+            st.divider()
+            
+            # Document Summary Section
+            st.header("📋 Document Summary")
+            if st.button("Generate Summary", type="primary", use_container_width=True):
+                self._generate_summary()
+            
+            if st.session_state.document_summary:
+                with st.expander("View Summary", expanded=False):
+                    st.markdown(st.session_state.document_summary)
+            
+            st.divider()
+            
+            # Usage Statistics
+            st.header("📊 Usage Statistics")
             
             # Last query info
             st.subheader("Last Query")
             if st.session_state.last_query_info:
                 info = st.session_state.last_query_info
                 st.text(f"Tokens: {info.get('total_tokens', 0)}")
-                st.text(f"Cost (USD): ${info.get('total_cost_usd', 0):.6f}")
+                st.text(f"Cost: ${info.get('total_cost_usd', 0):.6f}")
             else:
                 st.text("No queries processed yet")
-            
-            st.divider()
             
             # Session totals
             st.subheader("Session Total")
             st.text(f"Tokens: {st.session_state.total_tokens}")
-            st.text(f"Cost (USD): ${st.session_state.total_cost_usd:.6f}")
+            st.text(f"Cost: ${st.session_state.total_cost_usd:.6f}")
             
             st.divider()
             
-            # Document summary button
-            if st.button("Generate Document Summary", type="primary"):
-                self._generate_summary()
+            # Configuration options
+            self._render_config_options()
     
     def _render_config_options(self):
         """Render configuration options in sidebar."""
-        st.subheader("Configuration")
+        st.header("⚙️ Configuration")
         
         # Embedding model selection
         embedding_models = EmbeddingManager.get_available_models()
@@ -119,9 +170,9 @@ class StreamlitApp:
             index=available_models.index(current_model) if current_model in available_models else 0
         )
         
-        if st.button("Update Embedding Model"):
+        if st.button("Update Model", use_container_width=True):
             if EmbeddingManager.update_embedding_model(model_type.lower(), model_name):
-                st.success("Embedding model updated! Restart app to apply changes.")
+                st.success("Model updated! Restart to apply changes.")
         
         # Search strategy
         search_type = st.selectbox(
@@ -132,7 +183,7 @@ class StreamlitApp:
         
         if search_type != Config.SEARCH_TYPE:
             Config.SEARCH_TYPE = search_type
-            st.success(f"Search strategy updated to: {search_type}")
+            st.success(f"Search strategy: {search_type}")
     
     def render_chat_interface(self):
         """Render main chat interface."""
@@ -140,16 +191,21 @@ class StreamlitApp:
         
         # Display chat messages
         for message in st.session_state.messages:
-            role = "assistant" if message["role"] == "bot" else message["role"]
-            with st.chat_message(role):
+            with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask a question about your documents..."):
+        if prompt := st.chat_input("Ask a technical question about your documents..."):
+            if not st.session_state.vector_store_ready:
+                st.error("Vector store is not ready. Please wait for initialization.")
+                return
+            
             self._process_user_message(prompt)
     
     def _process_user_message(self, user_input: str):
         """Process user message and generate response."""
+        logger.info(f"Processing user query: {user_input[:50]}...")
+        
         # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         
@@ -157,14 +213,14 @@ class StreamlitApp:
         with st.chat_message("user"):
             st.markdown(user_input)
         
-        # Generate and display bot response
+        # Generate and display assistant response
         with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
+            with st.spinner("Analyzing documents..."):
                 response_data = self._get_assistant_response(user_input)
                 st.markdown(response_data["answer"])
         
-        # Add bot message
-        st.session_state.messages.append({"role": "bot", "content": response_data["answer"]})
+        # Add assistant message
+        st.session_state.messages.append({"role": "assistant", "content": response_data["answer"]})
         
         # Update statistics
         self._update_statistics(response_data)
@@ -183,9 +239,11 @@ class StreamlitApp:
         
         try:
             engine = RAGEngine()
-            return engine.process_query(user_input, st.session_state.messages)
+            response = engine.process_query(user_input, st.session_state.messages)
+            logger.info(f"Query processed successfully. Tokens: {response.get('total_tokens', 0)}")
+            return response
         except Exception as e:
-            print(f"ERROR in assistant response: {e}")
+            logger.error(f"Error in assistant response: {e}")
             return {
                 "answer": "I apologize, but I encountered an error processing your request. Please try again.",
                 "total_tokens": 0,
@@ -198,26 +256,26 @@ class StreamlitApp:
             st.error("Vector store is not ready")
             return
         
-        with st.spinner("Generating document summary..."):
+        logger.info("Generating document summary")
+        with st.spinner("Generating comprehensive document summary..."):
             try:
                 engine = RAGEngine()
                 response_data = engine.generate_summary()
                 
-                # Add summary to chat
-                summary_message = f"**Document Summary:**\n\n{response_data['answer']}"
-                st.session_state.messages.append({
-                    "role": "bot", 
-                    "content": summary_message
-                })
+                # Store summary separately from chat
+                st.session_state.document_summary = response_data['answer']
                 
                 # Update statistics
                 self._update_statistics(response_data)
                 
                 st.success("Document summary generated!")
+                logger.info("Document summary generated successfully")
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Failed to generate summary: {e}")
+                error_msg = f"Failed to generate summary: {e}"
+                st.error(error_msg)
+                logger.error(error_msg)
     
     def _update_statistics(self, response_data: Dict[str, Any]):
         """Update usage statistics."""
@@ -235,34 +293,40 @@ class StreamlitApp:
         """Get welcome message for the application."""
         doc_mode = "multiple documents" if Config.PROCESS_MULTIPLE_DOCUMENTS else "single document"
         
-        return f"""Welcome to the **{Config.APP_TITLE}**!
+        return f"""# Welcome to {Config.APP_TITLE}
 
-I'm here to help you explore and understand your technical documents. I can:
+I'm your technical documentation assistant, specialized in analyzing and explaining technical documents with precision.
 
-- Answer specific questions about document content
-- Provide detailed explanations with proper citations
-- Extract information from tables and figures
-- Generate comprehensive document summaries
+## My Capabilities:
+- 🔍 **Technical Analysis**: Deep analysis of technical documentation
+- 💡 **Code Explanation**: Detailed code examples and implementations  
+- 📊 **Data Interpretation**: Table and figure analysis
+- 📋 **Documentation**: Comprehensive summaries with proper citations
+- 🎯 **Precise Answers**: All responses include proper source citations
 
-**Current Configuration:**
-- Processing mode: {doc_mode}
-- Embedding model: {Config.OPENAI_EMBEDDING_MODEL if Config.EMBEDDING_TYPE == 'openai' else Config.HF_EMBEDDING_MODEL}
-- Search strategy: {Config.SEARCH_TYPE}
+## Current Configuration:
+- **Processing**: {doc_mode}
+- **Embedding**: {Config.OPENAI_EMBEDDING_MODEL if Config.EMBEDDING_TYPE == 'openai' else Config.HF_EMBEDDING_MODEL}
+- **Search**: {Config.SEARCH_TYPE}
 
-All my responses include proper source citations. Use the sidebar to generate a document summary or adjust settings.
+Every answer includes proper citations like [Source: filename] or [Source: filename, Page: X]. Use the sidebar to view loaded documents and generate comprehensive summaries.
 
-How can I help you today?"""
+What technical topic would you like to explore?"""
 
     def run(self):
         """Main application entry point."""
+        logger.info("Starting Technical Document Assistant")
+        
         # Validate configuration
         if not Config.validate():
             st.error("Configuration validation failed. Please check your settings.")
+            logger.error("Configuration validation failed")
             return
         
         # Setup directories
         if not Config.setup_directories():
             st.error("Failed to setup required directories.")
+            logger.error("Failed to setup directories")
             return
         
         # Render interface
@@ -272,7 +336,7 @@ How can I help you today?"""
 
 def main():
     """Main function to run the Streamlit app."""
-    app = StreamlitApp()
+    app = TechnicalDocumentApp()
     app.run()
 
 
