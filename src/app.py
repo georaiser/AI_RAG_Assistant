@@ -1,7 +1,7 @@
 # app.py
 """
 Simplified Streamlit application for Technical Document Assistant.
-Removed configuration options from sidebar as requested.
+Fixed vector store initialization issues with simpler approach.
 """
 
 import streamlit as st
@@ -29,12 +29,92 @@ st.set_page_config(
 )
 
 
+def initialize_app():
+    """Initialize application components - simple approach."""
+    if "app_initialized" in st.session_state:
+        return st.session_state.vector_manager, st.session_state.rag_engine
+    
+    try:
+        # Create vector manager
+        vector_manager = VectorStoreManager()
+        
+        # Try to load existing vector store first
+        if vector_manager.load_vector_store():
+            logger.info("Loaded existing vector store")
+            rag_engine = RAGEngine(vector_manager)
+            
+            # Store in session state
+            st.session_state.vector_manager = vector_manager
+            st.session_state.rag_engine = rag_engine
+            st.session_state.vector_store_ready = True
+            st.session_state.app_initialized = True
+            
+            # Get actual file info from data directory without reprocessing documents
+            doc_count = vector_manager.get_document_count()
+            try:
+                # Get list of actual files from the documents directory
+                from pathlib import Path
+                documents_dir = Config.DOCUMENTS_DIR
+                actual_files = []
+                if documents_dir.exists():
+                    for file_path in documents_dir.rglob("*"):
+                        if (file_path.is_file() and 
+                            file_path.suffix.lower() in Config.SUPPORTED_FORMATS and
+                            not file_path.name.startswith('.')):
+                            actual_files.append(file_path.name)
+                
+                st.session_state.file_info = {
+                    "loaded_files": actual_files if actual_files else ["Existing documents (loaded from vector store)"],
+                    "total_files": len(actual_files) if actual_files else 1,
+                    "total_chunks": doc_count,
+                    "file_stats": {"vector_store": {"chunks": doc_count}}
+                }
+            except Exception as e:
+                logger.warning(f"Could not get file list: {e}")
+                st.session_state.file_info = {
+                    "loaded_files": ["Existing documents (loaded from vector store)"],
+                    "total_files": 1,
+                    "total_chunks": doc_count,
+                    "file_stats": {"vector_store": {"chunks": doc_count}}
+                }
+            
+            return vector_manager, rag_engine
+        
+        # If no existing store, create new one
+        logger.info("Creating new vector store")
+        documents, file_info = load_data()
+        
+        if not documents:
+            st.error("No documents found in data directory")
+            return None, None
+        
+        if vector_manager.initialize_vector_store(documents):
+            rag_engine = RAGEngine(vector_manager)
+            
+            # Store in session state
+            st.session_state.vector_manager = vector_manager
+            st.session_state.rag_engine = rag_engine
+            st.session_state.vector_store_ready = True
+            st.session_state.file_info = file_info
+            st.session_state.app_initialized = True
+            
+            logger.info("New vector store created successfully")
+            return vector_manager, rag_engine
+        else:
+            st.error("Failed to create vector store")
+            return None, None
+            
+    except Exception as e:
+        logger.error(f"Error initializing app: {e}")
+        st.error(f"Initialization error: {str(e)}")
+        return None, None
+
+
 class TechnicalDocumentApp:
     """Main Streamlit application class."""
     
     def __init__(self):
         self.initialize_session_state()
-        self.setup_vector_store()
     
     def initialize_session_state(self):
         """Initialize session state variables."""
@@ -52,86 +132,67 @@ class TechnicalDocumentApp:
             if key not in st.session_state:
                 st.session_state[key] = value
     
-    def setup_vector_store(self):
-        """Setup vector store if not exists."""
-        if not st.session_state.vector_store_ready:
-            vector_manager = VectorStoreManager()
-            
-            if not Config.VECTOR_STORE_PATH.exists() or not any(Config.VECTOR_STORE_PATH.iterdir()):
-                logger.info("Initializing vector store")
-                st.info("Initializing vector store. This may take a few minutes...")
-                
-                documents, file_info = load_data()
-                if documents:
-                    if vector_manager.initialize_vector_store(documents):
-                        st.session_state.vector_store_ready = True
-                        st.session_state.file_info = file_info
-                        logger.info("Vector store initialized successfully")
-                        st.success("Vector store initialized!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to initialize vector store")
-                else:
-                    st.error("No documents found to process")
-            else:
-                if vector_manager.load_vector_store():
-                    st.session_state.vector_store_ready = True
-                    if not st.session_state.file_info:
-                        try:
-                            _, file_info = load_data()
-                            st.session_state.file_info = file_info
-                        except Exception as e:
-                            logger.warning(f"Could not load file info: {e}")
-                    logger.info("Vector store loaded successfully")
-    
     def render_sidebar(self):
-        """Render simplified sidebar with file information and summary only."""
+        """Render sidebar with status and controls."""
         with st.sidebar:
-            # File Information
-            st.header("📁 Loaded Documents")
-            if st.session_state.file_info:
-                info = st.session_state.file_info
-                st.metric("Total Files", info.get("total_files", 0))
-                st.metric("Total Chunks", info.get("total_chunks", 0))
-                
-                if info.get("loaded_files"):
-                    with st.expander("File Details", expanded=False):
-                        for filename in info["loaded_files"]:
-                            st.text(f"📄 {filename}")
+            # Status indicator
+            if st.session_state.get("vector_store_ready", False):
+                st.success("✅ Vector Store Ready")
             else:
-                st.text("No documents loaded yet")
+                st.warning("⏳ Initializing...")
             
             st.divider()
             
-            # Document Summary Section
-            st.header("📋 Document Summary")
-            if st.button("Generate Summary", type="primary", use_container_width=True):
+            # File Information
+            st.header("📁 Documents")
+            file_info = st.session_state.get("file_info", {})
+            if file_info:
+                st.metric("Files", file_info.get("total_files", 0))
+                st.metric("Chunks", file_info.get("total_chunks", 0))
+                
+                loaded_files = file_info.get("loaded_files", [])
+                if loaded_files:
+                    with st.expander("File List"):
+                        for filename in loaded_files:
+                            st.text(f"📄 {filename}")
+                else:
+                    st.info("📄 Vector store loaded with existing documents")
+            else:
+                st.info("📄 Loading document information...")
+            
+            st.divider()
+            
+            # Summary button
+            if st.button("Generate Summary", disabled=not st.session_state.get("vector_store_ready", False)):
                 self._generate_summary()
             
-            if st.session_state.document_summary:
-                with st.expander("View Summary", expanded=False):
+            # Clear conversation button
+            if st.button("Clear Conversation", type="secondary"):
+                st.session_state.messages = [{"role": "assistant", "content": self._get_welcome_message()}]
+                st.rerun()
+            
+            if st.session_state.get("document_summary"):
+                with st.expander("Summary"):
                     st.markdown(st.session_state.document_summary)
             
             st.divider()
             
-            # Usage Statistics
-            st.header("📊 Usage Statistics")
-            
-            st.subheader("Last Query")
-            if st.session_state.last_query_info:
-                info = st.session_state.last_query_info
-                st.text(f"Tokens: {info.get('total_tokens', 0)}")
-                st.text(f"Cost: ${info.get('total_cost_usd', 0):.6f}")
-            else:
-                st.text("No queries processed yet")
-            
-            st.subheader("Session Total")
-            st.text(f"Tokens: {st.session_state.total_tokens}")
-            st.text(f"Cost: ${st.session_state.total_cost_usd:.6f}")
+            # Stats
+            st.header("📊 Usage")
+            st.text(f"Total Tokens: {st.session_state.total_tokens}")
+            st.text(f"Total Cost: ${st.session_state.total_cost_usd:.6f}")
     
     def render_chat_interface(self):
         """Render main chat interface."""
         st.title(Config.APP_TITLE)
+        
+        # Get initialized components from session state
+        vector_manager = st.session_state.get("vector_manager")
+        rag_engine = st.session_state.get("rag_engine")
+        
+        if not vector_manager or not rag_engine:
+            st.error("Failed to initialize. Please check your configuration and data directory.")
+            return
         
         # Display chat messages
         for message in st.session_state.messages:
@@ -139,84 +200,51 @@ class TechnicalDocumentApp:
                 st.markdown(message["content"])
         
         # Chat input
-        if prompt := st.chat_input("Ask a technical question about your documents..."):
-            if not st.session_state.vector_store_ready:
-                st.error("Vector store is not ready. Please wait for initialization.")
-                return
-            
+        if prompt := st.chat_input("Ask about your documents..."):
             self._process_user_message(prompt)
     
-    def _process_user_message(self, user_input: str):
+    def _process_user_message(self, user_input: str, rag_engine: RAGEngine = None):
         """Process user message and generate response."""
-        logger.info(f"Processing user query: {user_input[:50]}...")
+        # Get RAG engine from session state if not provided
+        if rag_engine is None:
+            rag_engine = st.session_state.get("rag_engine")
+            if not rag_engine:
+                st.error("RAG engine not available")
+                return
         
         # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         
-        # Display user message
         with st.chat_message("user"):
             st.markdown(user_input)
         
-        # Generate and display assistant response
+        # Generate response
         with st.chat_message("assistant"):
-            with st.spinner("Analyzing documents..."):
-                response_data = self._get_assistant_response(user_input)
+            with st.spinner("Processing..."):
+                response_data = rag_engine.process_query(user_input, st.session_state.messages)
                 st.markdown(response_data["answer"])
         
         # Add assistant message
         st.session_state.messages.append({"role": "assistant", "content": response_data["answer"]})
         
-        # Update statistics
+        # Update stats
         self._update_statistics(response_data)
-        
-        # Rerun to update sidebar
-        st.rerun()
-    
-    def _get_assistant_response(self, user_input: str) -> Dict[str, Any]:
-        """Get response from RAG engine."""
-        if not st.session_state.vector_store_ready:
-            return {
-                "answer": "Vector store is not ready. Please wait for initialization to complete.",
-                "total_tokens": 0,
-                "total_cost_usd": 0.0
-            }
-        
-        try:
-            engine = RAGEngine()
-            response = engine.process_query(user_input, st.session_state.messages)
-            logger.info(f"Query processed successfully. Tokens: {response.get('total_tokens', 0)}")
-            return response
-        except Exception as e:
-            logger.error(f"Error in assistant response: {e}")
-            return {
-                "answer": "I apologize, but I encountered an error processing your request. Please try again.",
-                "total_tokens": 0,
-                "total_cost_usd": 0.0
-            }
     
     def _generate_summary(self):
         """Generate document summary."""
-        if not st.session_state.vector_store_ready:
-            st.error("Vector store is not ready")
+        rag_engine = st.session_state.get("rag_engine")
+        if not rag_engine:
+            st.error("RAG engine not available")
             return
         
-        logger.info("Generating document summary")
-        with st.spinner("Generating comprehensive document summary..."):
+        with st.spinner("Generating summary..."):
             try:
-                engine = RAGEngine()
-                response_data = engine.generate_summary()
-                
+                response_data = rag_engine.generate_summary()
                 st.session_state.document_summary = response_data['answer']
                 self._update_statistics(response_data)
-                
-                st.success("Document summary generated!")
-                logger.info("Document summary generated successfully")
-                st.rerun()
-                
+                st.success("Summary generated!")
             except Exception as e:
-                error_msg = f"Failed to generate summary: {e}"
-                st.error(error_msg)
-                logger.error(error_msg)
+                st.error(f"Failed to generate summary: {e}")
     
     def _update_statistics(self, response_data: Dict[str, Any]):
         """Update usage statistics."""
@@ -231,42 +259,45 @@ class TechnicalDocumentApp:
         }
     
     def _get_welcome_message(self) -> str:
-        """Get welcome message for the application."""
+        """Get welcome message."""
         return f"""# Welcome to {Config.APP_TITLE}
 
-I'm your technical documentation assistant, specialized in analyzing and explaining technical documents with precision.
+I'm your technical documentation assistant.
 
-## My Capabilities:
-- 🔍 **Technical Analysis**: Deep analysis of technical documentation
-- 💡 **Code Explanation**: Detailed code examples and implementations  
-- 📊 **Data Interpretation**: Table and figure analysis
-- 📋 **Documentation**: Comprehensive summaries with proper citations
-- 🎯 **Precise Answers**: All responses include proper source citations
+## Capabilities:
+- 🔍 Technical document analysis
+- 💡 Code explanation with examples  
+- 📊 Data and table interpretation
+- 📋 Comprehensive summaries
+- 🎯 Precise answers with citations
 
-Every answer includes proper citations like [Source: filename] or [Source: filename, Page: X]. 
-Use the sidebar to view loaded documents and generate comprehensive summaries.
+All responses include proper source citations.
 
-What technical topic would you like to explore?"""
+What would you like to explore?"""
     
     def run(self):
         """Main application entry point."""
-        logger.info("Starting Technical Document Assistant")
-        
         if not Config.validate():
-            st.error("Configuration validation failed. Please check your settings.")
+            st.error("Configuration invalid. Check your settings.")
             return
         
         if not Config.setup_directories():
-            st.error("Failed to setup required directories.")
+            st.error("Failed to create directories.")
             return
         
-        # Render interface
+        # Initialize app components first
+        vector_manager, rag_engine = initialize_app()
+        
+        if not vector_manager or not rag_engine:
+            st.error("Failed to initialize. Please check your configuration and data directory.")
+            return
+        
         self.render_sidebar()
         self.render_chat_interface()
 
 
 def main():
-    """Main function to run the Streamlit app."""
+    """Main function."""
     app = TechnicalDocumentApp()
     app.run()
 
