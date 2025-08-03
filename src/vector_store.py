@@ -1,6 +1,6 @@
 # vector_store.py
 """
-Simplified vector store management with better error handling.
+Enhanced vector store management with better error handling and retriever configuration.
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class VectorStoreManager:
-    """Simple vector store manager."""
+    """Enhanced vector store manager with better retriever handling."""
     
     def __init__(self):
         """Initialize with embeddings."""
@@ -132,29 +132,40 @@ class VectorStoreManager:
         except:
             return False
     
-    def get_retriever(self):
-        """Get retriever for document search."""
+    def get_retriever(self, search_type: Optional[str] = None, search_kwargs: Optional[Dict] = None):
+        """
+        Get retriever for document search with enhanced configuration.
+        
+        Args:
+            search_type: Override default search type
+            search_kwargs: Override default search kwargs
+        """
         if not self.is_ready():
             logger.error("Vector store not ready")
             return None
         
         try:
-            search_kwargs = {"k": Config.RETRIEVAL_K}
+            # Use provided parameters or fall back to config defaults
+            final_search_type = search_type or Config.SEARCH_TYPE
             
-            if Config.SEARCH_TYPE == "mmr":
-                search_kwargs.update({
-                    "fetch_k": Config.FETCH_K,
-                    "lambda_mult": Config.LAMBDA_MULT
-                })
-            elif Config.SEARCH_TYPE == "similarity_score_threshold":
-                search_kwargs["score_threshold"] = Config.SCORE_THRESHOLD
+            if search_kwargs is None:
+                # Build default search kwargs based on search type
+                search_kwargs = {"k": Config.RETRIEVAL_K}
+                
+                if final_search_type == "mmr":
+                    search_kwargs.update({
+                        "fetch_k": Config.FETCH_K,
+                        "lambda_mult": Config.LAMBDA_MULT
+                    })
+                elif final_search_type == "similarity_score_threshold":
+                    search_kwargs["score_threshold"] = Config.SCORE_THRESHOLD
             
             retriever = self.vector_store.as_retriever(
-                search_type=Config.SEARCH_TYPE,
+                search_type=final_search_type,
                 search_kwargs=search_kwargs
             )
             
-            logger.info(f"Retriever created with {Config.SEARCH_TYPE}")
+            logger.info(f"Retriever created with {final_search_type}, k={search_kwargs.get('k', 'default')}")
             return retriever
             
         except Exception as e:
@@ -182,3 +193,28 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Error deleting vector store: {e}")
             return False
+    
+    def search_documents(self, query: str, k: int = None) -> List[Document]:
+        """
+        Direct document search for testing/debugging.
+        
+        Args:
+            query: Search query
+            k: Number of documents to return (default: Config.RETRIEVAL_K)
+        
+        Returns:
+            List of retrieved documents
+        """
+        if not self.is_ready():
+            logger.error("Vector store not ready for search")
+            return []
+        
+        try:
+            k = k or Config.RETRIEVAL_K
+            retriever = self.get_retriever(search_kwargs={"k": k})
+            if retriever:
+                return retriever.invoke(query)
+            return []
+        except Exception as e:
+            logger.error(f"Error in document search: {e}")
+            return []

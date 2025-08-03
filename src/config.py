@@ -1,6 +1,6 @@
 # config.py
 """
-Configuration settings for the RAG project.
+Enhanced configuration settings for the RAG project.
 """
 
 import os
@@ -55,11 +55,11 @@ class Config:
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     
-    # Retrieval settings
-    MAX_CONTEXT_CHARS: int = 12000  # hard limit for combined context length
-    SUMMARY_K: int = 40  # number of chunks to pull for summary
-    RETRIEVAL_K: int = 9
-    SEARCH_TYPE: str = "similarity"
+    # Enhanced retrieval settings
+    MAX_CONTEXT_CHARS: int = 12000  # Hard limit for combined context length
+    SUMMARY_K: int = 40  # Number of chunks to pull for summary
+    RETRIEVAL_K: int = 9  # Default number of documents to retrieve
+    SEARCH_TYPE: str = "mmr"  # Changed default to MMR for better diversity
     
     AVAILABLE_SEARCH_TYPES: List[str] = [
         "similarity",
@@ -67,13 +67,21 @@ class Config:
         "similarity_score_threshold"
     ]
     
-    # Search parameters
-    FETCH_K: int = 20
-    LAMBDA_MULT: float = 0.7
-    SCORE_THRESHOLD: float = 0.4
+    # Enhanced search parameters for better retrieval
+    FETCH_K: int = 20  # Number of documents to fetch before MMR filtering
+    LAMBDA_MULT: float = 0.7  # Balance between relevance (1.0) and diversity (0.0)
+    SCORE_THRESHOLD: float = 0.4  # Minimum similarity score threshold
+    
+    # Conversation settings
+    MAX_CONVERSATION_HISTORY: int = 6  # Maximum messages to keep in history (3 exchanges)
+    MAX_MESSAGE_LENGTH: int = 500  # Maximum length for individual messages in history
     
     # App settings
-    APP_TITLE: str = "Document Assistant"
+    APP_TITLE: str = "Technical Document Assistant"
+    
+    # Debug settings
+    DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() == "true"
+    VERBOSE_LOGGING: bool = os.getenv("VERBOSE_LOGGING", "false").lower() == "true"
         
     @classmethod
     def validate(cls) -> bool:
@@ -84,6 +92,18 @@ class Config:
         
         if cls.CHUNK_SIZE <= 0 or cls.CHUNK_OVERLAP >= cls.CHUNK_SIZE:
             print("ERROR: Invalid chunk settings")
+            return False
+        
+        if cls.RETRIEVAL_K <= 0 or cls.FETCH_K < cls.RETRIEVAL_K:
+            print("ERROR: Invalid retrieval settings - FETCH_K must be >= RETRIEVAL_K")
+            return False
+        
+        if not 0.0 <= cls.LAMBDA_MULT <= 1.0:
+            print("ERROR: LAMBDA_MULT must be between 0.0 and 1.0")
+            return False
+        
+        if cls.EMBEDDING_TYPE not in ["openai", "huggingface"]:
+            print("ERROR: EMBEDDING_TYPE must be 'openai' or 'huggingface'")
             return False
         
         return True
@@ -100,3 +120,18 @@ class Config:
         except Exception as e:
             print(f"ERROR: Failed to create directories: {e}")
             return False
+    
+    @classmethod
+    def get_search_config(cls) -> dict:
+        """Get search configuration based on search type."""
+        base_config = {"k": cls.RETRIEVAL_K}
+        
+        if cls.SEARCH_TYPE == "mmr":
+            base_config.update({
+                "fetch_k": cls.FETCH_K,
+                "lambda_mult": cls.LAMBDA_MULT
+            })
+        elif cls.SEARCH_TYPE == "similarity_score_threshold":
+            base_config["score_threshold"] = cls.SCORE_THRESHOLD
+        
+        return base_config

@@ -1,13 +1,14 @@
 # backend.py
 """
-Simplified RAG Engine with better error handling.
+Unified RAG Engine with simplified role handling - only user/assistant roles.
 """
 
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from langchain_openai import ChatOpenAI
 from langchain_community.callbacks import get_openai_callback
 from langchain.prompts import PromptTemplate
+from langchain.chains import ConversationalRetrievalChain
 from langchain.schema import HumanMessage
 from vector_store import VectorStoreManager
 from prompts import SYSTEM_TEMPLATE, SUMMARY_TEMPLATE
@@ -16,9 +17,13 @@ from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
+# UNIFIED ROLE CONSTANTS - Only two roles needed
+USER_ROLE = "user"
+ASSISTANT_ROLE = "assistant"
+
 
 class RAGEngine:
-    """Simplified RAG engine for document question-answering."""
+    """Unified RAG engine with simplified role handling."""
     
     def __init__(self, vector_manager: VectorStoreManager):
         """Initialize RAG engine."""
@@ -28,70 +33,78 @@ class RAGEngine:
             temperature=Config.TEMPERATURE,
             api_key=SecretStr(Config.OPENAI_API_KEY)
         )
+        self._retriever = None
+        self._chain = None
         logger.info(f"RAG Engine initialized with {Config.MODEL_NAME}")
     
+    def _get_retriever(self):
+        """Get or create retriever (cached)."""
+        if self._retriever is None:
+            self._retriever = self.vector_manager.get_retriever()
+        return self._retriever
+    
+    def _get_chain(self):
+        """Get or create conversational chain (cached)."""
+        if self._chain is None:
+            retriever = self._get_retriever()
+            if not retriever:
+                return None
+            
+            prompt = PromptTemplate(
+                template=SYSTEM_TEMPLATE,
+                input_variables=["context", "chat_history", "question"]
+            )
+            
+            self._chain = ConversationalRetrievalChain.from_llm(
+                llm=self.llm,
+                retriever=retriever,
+                combine_docs_chain_kwargs={"prompt": prompt},
+                return_source_documents=True,
+                verbose=Config.DEBUG_MODE
+            )
+        
+        return self._chain
+    
     def process_query(self, query: str, chat_history: List[Dict]) -> Dict[str, Any]:
-        """Process user query and return response."""
+        """Process a user query with simplified role handling."""
         try:
-            # Check if vector store is ready
-            if not self.vector_manager.is_ready():
-                return self._error_response("Vector store not ready")
+            chain = self._get_chain()
+            if not chain:
+                return self._error_response("Failed to create conversation chain")
+            
+            # Format chat history - simplified, no complex role mapping
+            formatted_history = self._format_chat_history(chat_history)
+            
+            if formatted_history:
+                logger.info(f"Using {len(formatted_history)} conversation exchanges for context")
             
             with get_openai_callback() as cb:
-                # Get retriever and search documents
-                retriever = self.vector_manager.get_retriever()
-                if not retriever:
-                    return self._error_response("Could not create retriever")
+                result = chain.invoke({
+                    "question": query,
+                    "chat_history": formatted_history
+                })
                 
-                docs = retriever.invoke(query)
-                
-                if not docs:
-                    return {
-                        "answer": "No relevant information found. Try rephrasing your question.",
-                        "total_tokens": 0,
-                        "total_cost_usd": 0.0
-                    }
-                
-                # Create context
-                context = self._create_context(docs)
-                history = self._format_history(chat_history)
-                
-                # Log conversation context for debugging
-                logger.info(f"Processing query: {query[:100]}...")
-                logger.info(f"History length: {len(history)} characters")
-                logger.info(f"Context length: {len(context)} characters")
-                
-                # Log conversation context for natural flow
-                if history and history != "No previous conversation.":
-                    logger.info("Conversation history available - maintaining context")
-                
-                # Log context quality for citations
-                if docs:
-                    logger.info(f"Retrieved {len(docs)} documents for context")
-                    # Check if documents have page information
-                    docs_with_pages = sum(1 for doc in docs if doc.metadata.get('page'))
-                    logger.info(f"Documents with page info: {docs_with_pages}/{len(docs)}")
+                # Log retrieval quality
+                source_docs = result.get("source_documents", [])
+                if source_docs:
+                    logger.info(f"Retrieved {len(source_docs)} documents for context")
+                    # Check citation format
+                    docs_with_proper_headers = sum(
+                        1 for doc in source_docs 
+                        if doc.page_content.startswith('[') and ']' in doc.page_content
+                    )
+                    logger.info(f"Documents with proper headers: {docs_with_proper_headers}/{len(source_docs)}")
                 else:
-                    logger.warning("No documents retrieved - may affect citation quality")
+                    logger.warning("No source documents retrieved")
                 
-
-                
-                # Generate response
-                prompt = PromptTemplate(
-                    template=SYSTEM_TEMPLATE,
-                    input_variables=["context", "chat_history", "question"]
-                )
-                
-                prompt_text = prompt.format(
-                    context=context,
-                    chat_history=history,
-                    question=query
-                )
-                
-                response = self.llm.invoke([HumanMessage(content=prompt_text)])
+                # Validate answer completeness
+                answer = result["answer"]
+                if len(answer.strip()) < 50:
+                    logger.warning(f"Short answer generated: {len(answer)} characters")
                 
                 return {
-                    "answer": response.content,
+                    "answer": answer,
+                    "source_documents": source_docs,
                     "total_tokens": cb.total_tokens,
                     "prompt_tokens": cb.prompt_tokens,
                     "completion_tokens": cb.completion_tokens,
@@ -102,6 +115,54 @@ class RAGEngine:
             logger.error(f"Error processing query: {e}")
             return self._error_response(f"Processing error: {str(e)}")
     
+    def _format_chat_history(self, messages: List[Dict]) -> List[Tuple[str, str]]:
+        """
+        Simplified chat history formatting - only handles user/assistant roles.
+        Returns list of (human_message, ai_message) tuples.
+        """
+        if len(messages) <= 1:
+            return []
+        
+        # Filter out welcome message and current query
+        relevant_messages = []
+        for i, msg in enumerate(messages):
+            # Skip welcome message (first message)
+            if i == 0 and self._is_welcome_message(msg):
+                continue
+            # Skip current query (last message)
+            if i == len(messages) - 1:
+                continue
+            relevant_messages.append(msg)
+        
+        # Limit to last 6 messages (3 user-assistant pairs)
+        if len(relevant_messages) > 6:
+            relevant_messages = relevant_messages[-6:]
+        
+        # Create (user, assistant) pairs - simplified logic
+        formatted_history = []
+        i = 0
+        while i < len(relevant_messages) - 1:
+            current_msg = relevant_messages[i]
+            next_msg = relevant_messages[i + 1]
+            
+            # Look for user-assistant pair
+            if (current_msg["role"] == USER_ROLE and 
+                next_msg["role"] == ASSISTANT_ROLE):
+                
+                user_content = current_msg["content"]
+                assistant_content = next_msg["content"]
+                
+                # Truncate to prevent context overflow
+                user_truncated = user_content[:300] + "..." if len(user_content) > 300 else user_content
+                assistant_truncated = assistant_content[:400] + "..." if len(assistant_content) > 400 else assistant_content
+                
+                formatted_history.append((user_truncated, assistant_truncated))
+                i += 2  # Skip both messages
+            else:
+                i += 1  # Move to next message
+        
+        return formatted_history
+    
     def generate_summary(self) -> Dict[str, Any]:
         """Generate document summary."""
         try:
@@ -109,27 +170,25 @@ class RAGEngine:
                 return self._error_response("Vector store not ready")
             
             with get_openai_callback() as cb:
-                # Create a retriever that fetches ALL documents to build a complete summary
-                doc_count = self.vector_manager.get_document_count()
-                retriever = self.vector_manager.vector_store.as_retriever(
-                    search_type=Config.SEARCH_TYPE,
-                    search_kwargs={"k": min(doc_count, Config.SUMMARY_K)}
-                )
+                retriever = self._get_retriever()
                 if not retriever:
                     return self._error_response("Could not create retriever")
 
-                # Retrieve a broad sample of all docs
-                docs = retriever.invoke("overview")
-                # Ensure we don't exceed SUMMARY_K
+                # Retrieve documents for summary
+                docs = retriever.invoke("overview summary content")
+                
                 if len(docs) > Config.SUMMARY_K:
                     docs = docs[:Config.SUMMARY_K]
                 
                 if not docs:
-                    return self._error_response("No documents for summary")
+                    return self._error_response("No documents retrieved for summary")
                 
                 context = self._create_context(docs)
                 
-                prompt = PromptTemplate(template=SUMMARY_TEMPLATE, input_variables=["context"])
+                prompt = PromptTemplate(
+                    template=SUMMARY_TEMPLATE, 
+                    input_variables=["context"]
+                )
                 prompt_text = prompt.format(context=context)
                 
                 response = self.llm.invoke([HumanMessage(content=prompt_text)])
@@ -147,7 +206,7 @@ class RAGEngine:
             return self._error_response(f"Summary error: {str(e)}")
     
     def _create_context(self, documents: List) -> str:
-        """Create context from documents with length control."""
+        """Create context from documents with proper citation format."""
         if not documents:
             return "No documents found."
         
@@ -160,86 +219,55 @@ class RAGEngine:
             source = metadata.get('source', 'Unknown')
             page = metadata.get('page')
 
-            # Create source header strictly matching citation format
+            content = doc.page_content.strip()
+            
+            # Ensure proper citation header format
             if page is not None:
-                header = f"[{source}, Page: {page}]"
+                expected_header = f"[{source}, Page: {page}]"
             else:
-                header = f"[{source}]"
+                expected_header = f"[{source}]"
             
-            part = f"{header}\n{doc.page_content}\n"
-            if total_chars + len(part) > max_chars:
-                break
-            context_parts.append(part)
-            total_chars += len(part)
-        
-        return "\n".join(context_parts)
-    
-    def _format_history(self, messages: List[Dict]) -> str:
-        """Format chat history with proper role handling."""
-        if len(messages) <= 1:
-            return "No previous conversation."
-        
-        # Get relevant messages (skip welcome message and current message)
-        relevant = []
-        for i, msg in enumerate(messages):
-            # Skip welcome message and current message (last one)
-            if i == 0 or i == len(messages) - 1:
-                continue
-            if not self._is_welcome_message(msg):
-                relevant.append(msg)
-        
-        # Take last 3 exchanges (6 messages: 3 user + 3 assistant) to understand conversation flow
-        if len(relevant) > 6:
-            relevant = relevant[-6:]
-        
-        history_parts = []
-        i = 0
-        while i < len(relevant):
-            # Find user message
-            user_msg = None
-            assistant_msg = None
+            # Fix header format if needed
+            lines = content.split('\n')
+            first_line = lines[0] if lines else ""
             
-            # Look for user message
-            while i < len(relevant) and relevant[i]["role"] != "user":
-                i += 1
-            if i < len(relevant):
-                user_msg = relevant[i]
-                i += 1
-            
-            # Look for corresponding assistant message
-            while i < len(relevant) and relevant[i]["role"] != "assistant":
-                i += 1
-            if i < len(relevant):
-                assistant_msg = relevant[i]
-                i += 1
-            
-            # Add the exchange if we have both messages
-            if user_msg and assistant_msg:
-                # Truncate content to avoid context overflow but keep enough for context
-                user_content = user_msg['content'][:200] + "..." if len(user_msg['content']) > 200 else user_msg['content']
-                assistant_content = assistant_msg['content'][:300] + "..." if len(assistant_msg['content']) > 300 else assistant_msg['content']
+            if (not first_line.startswith('[') or 
+                '[PAGE ' in first_line.upper() or 
+                source not in first_line):
                 
-                history_parts.append(f"Human: {user_content}")
-                history_parts.append(f"Assistant: {assistant_content}")
+                # Remove bad header and add correct one
+                if first_line.startswith('[') and ']' in first_line:
+                    content_without_header = '\n'.join(lines[1:])
+                else:
+                    content_without_header = content
+                
+                content = f"{expected_header}\n{content_without_header}"
+            
+            # Add to context if it fits
+            if total_chars + len(content) + 2 > max_chars:
+                break
+            
+            context_parts.append(content)
+            total_chars += len(content) + 2
         
-        history_text = "\n".join(history_parts) if history_parts else "No previous conversation."
-        # Truncate history to keep prompt within context window
-        max_history_chars = 4000
-        if len(history_text) > max_history_chars:
-            history_text = history_text[-max_history_chars:]
-        return history_text
+        return "\n\n".join(context_parts)
     
     def _is_welcome_message(self, message: Dict) -> bool:
-        """Check if message is welcome message."""
+        """Check if message is a welcome message."""
         content = message.get('content', '').lower()
-        return 'welcome' in content or 'technical document assistant' in content or 'technical documentation assistant' in content
-    
-
+        welcome_indicators = [
+            'welcome', 
+            'technical document assistant',
+            'capabilities:',
+            'what would you like to explore'
+        ]
+        return any(indicator in content for indicator in welcome_indicators)
     
     def _error_response(self, message: str) -> Dict[str, Any]:
-        """Create error response."""
+        """Create standardized error response."""
         return {
-            "answer": f"Error: {message}. Please try again.",
+            "answer": f"I apologize, but I encountered an error: {message}. Please try rephrasing your question.",
+            "source_documents": [],
             "total_tokens": 0,
             "prompt_tokens": 0,
             "completion_tokens": 0,

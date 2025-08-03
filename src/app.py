@@ -1,7 +1,6 @@
 # app.py
 """
-Simplified Streamlit application for Technical Document Assistant.
-Fixed vector store initialization issues with simpler approach.
+Unified Streamlit application with simplified role handling - only user/assistant.
 """
 
 import streamlit as st
@@ -21,6 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# UNIFIED ROLE CONSTANTS - Only two roles needed
+USER_ROLE = "user"
+ASSISTANT_ROLE = "assistant"
+
 # Page configuration
 st.set_page_config(
     page_title=Config.APP_TITLE,
@@ -30,12 +33,11 @@ st.set_page_config(
 
 
 def initialize_app():
-    """Initialize application components - simple approach."""
+    """Initialize application components."""
     if "app_initialized" in st.session_state:
         return st.session_state.vector_manager, st.session_state.rag_engine
     
     try:
-        # Create vector manager
         vector_manager = VectorStoreManager()
         
         # Try to load existing vector store first
@@ -49,11 +51,9 @@ def initialize_app():
             st.session_state.vector_store_ready = True
             st.session_state.app_initialized = True
             
-            # Get actual file info from data directory without reprocessing documents
+            # Get file info
             doc_count = vector_manager.get_document_count()
             try:
-                # Get list of actual files from the documents directory
-                from pathlib import Path
                 documents_dir = Config.DOCUMENTS_DIR
                 actual_files = []
                 if documents_dir.exists():
@@ -64,7 +64,7 @@ def initialize_app():
                             actual_files.append(file_path.name)
                 
                 st.session_state.file_info = {
-                    "loaded_files": actual_files if actual_files else ["Existing documents (loaded from vector store)"],
+                    "loaded_files": actual_files if actual_files else ["Existing documents"],
                     "total_files": len(actual_files) if actual_files else 1,
                     "total_chunks": doc_count,
                     "file_stats": {"vector_store": {"chunks": doc_count}}
@@ -72,7 +72,7 @@ def initialize_app():
             except Exception as e:
                 logger.warning(f"Could not get file list: {e}")
                 st.session_state.file_info = {
-                    "loaded_files": ["Existing documents (loaded from vector store)"],
+                    "loaded_files": ["Existing documents"],
                     "total_files": 1,
                     "total_chunks": doc_count,
                     "file_stats": {"vector_store": {"chunks": doc_count}}
@@ -80,7 +80,7 @@ def initialize_app():
             
             return vector_manager, rag_engine
         
-        # If no existing store, create new one
+        # Create new vector store
         logger.info("Creating new vector store")
         documents, file_info = load_data()
         
@@ -91,7 +91,6 @@ def initialize_app():
         if vector_manager.initialize_vector_store(documents):
             rag_engine = RAGEngine(vector_manager)
             
-            # Store in session state
             st.session_state.vector_manager = vector_manager
             st.session_state.rag_engine = rag_engine
             st.session_state.vector_store_ready = True
@@ -111,15 +110,15 @@ def initialize_app():
 
 
 class TechnicalDocumentApp:
-    """Main Streamlit application class."""
+    """Unified application class with simplified role handling."""
     
     def __init__(self):
         self.initialize_session_state()
     
     def initialize_session_state(self):
-        """Initialize session state variables."""
+        """Initialize session state with unified roles."""
         defaults = {
-            "messages": [{"role": "assistant", "content": self._get_welcome_message()}],
+            "messages": [{"role": ASSISTANT_ROLE, "content": self._get_welcome_message()}],
             "total_tokens": 0,
             "total_cost_usd": 0.0,
             "last_query_info": {},
@@ -155,12 +154,15 @@ class TechnicalDocumentApp:
                     with st.expander("File List"):
                         for filename in loaded_files:
                             st.text(f"📄 {filename}")
-                else:
-                    st.info("📄 Vector store loaded with existing documents")
-            else:
-                st.info("📄 Loading document information...")
             
             st.divider()
+            
+            # Debug mode toggle
+            if Config.DEBUG_MODE:
+                st.warning("🐛 Debug Mode Active")
+                show_sources = st.checkbox("Show Sources", value=True, key="show_sources")
+            else:
+                show_sources = st.checkbox("Show Sources", value=False, key="show_sources")
             
             # Summary button
             if st.button("Generate Summary", disabled=not st.session_state.get("vector_store_ready", False)):
@@ -168,7 +170,7 @@ class TechnicalDocumentApp:
             
             # Clear conversation button
             if st.button("Clear Conversation", type="secondary"):
-                st.session_state.messages = [{"role": "assistant", "content": self._get_welcome_message()}]
+                st.session_state.messages = [{"role": ASSISTANT_ROLE, "content": self._get_welcome_message()}]
                 st.rerun()
             
             if st.session_state.get("document_summary"):
@@ -181,12 +183,16 @@ class TechnicalDocumentApp:
             st.header("📊 Usage")
             st.text(f"Total Tokens: {st.session_state.total_tokens}")
             st.text(f"Total Cost: ${st.session_state.total_cost_usd:.6f}")
+            
+            if st.session_state.get("last_query_info"):
+                last_info = st.session_state.last_query_info
+                st.text(f"Last Query: {last_info.get('total_tokens', 0)} tokens")
+                st.text(f"Last Cost: ${last_info.get('total_cost_usd', 0):.6f}")
     
     def render_chat_interface(self):
-        """Render main chat interface."""
+        """Render chat interface with unified role handling."""
         st.title(Config.APP_TITLE)
         
-        # Get initialized components from session state
         vector_manager = st.session_state.get("vector_manager")
         rag_engine = st.session_state.get("rag_engine")
         
@@ -194,38 +200,77 @@ class TechnicalDocumentApp:
             st.error("Failed to initialize. Please check your configuration and data directory.")
             return
         
-        # Display chat messages
+        # Display chat messages - simple, no role normalization needed
         for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
+            with st.chat_message(message["role"]):  # Direct use - only user/assistant
                 st.markdown(message["content"])
         
         # Chat input
         if prompt := st.chat_input("Ask about your documents..."):
             self._process_user_message(prompt)
     
-    def _process_user_message(self, user_input: str, rag_engine: RAGEngine = None):
-        """Process user message and generate response."""
-        # Get RAG engine from session state if not provided
-        if rag_engine is None:
-            rag_engine = st.session_state.get("rag_engine")
-            if not rag_engine:
-                st.error("RAG engine not available")
-                return
+    def _process_user_message(self, user_input: str):
+        """Process user message with unified role handling."""
+        rag_engine = st.session_state.get("rag_engine")
+        if not rag_engine:
+            st.error("RAG engine not available")
+            return
         
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        # Add user message - unified role
+        st.session_state.messages.append({"role": USER_ROLE, "content": user_input})
         
-        with st.chat_message("user"):
+        with st.chat_message(USER_ROLE):
             st.markdown(user_input)
         
         # Generate response
-        with st.chat_message("assistant"):
+        with st.chat_message(ASSISTANT_ROLE):
             with st.spinner("Processing..."):
-                response_data = rag_engine.process_query(user_input, st.session_state.messages)
-                st.markdown(response_data["answer"])
+                try:
+                    # Process query with current messages
+                    messages_copy = st.session_state.messages.copy()
+                    response_data = rag_engine.process_query(user_input, messages_copy)
+                    
+                    # Validate response completeness
+                    answer = response_data["answer"]
+                    if not answer or len(answer.strip()) < 10:
+                        st.error("Generated response is too short. Please try rephrasing your question.")
+                        response_data["answer"] = "I apologize, but I couldn't generate a complete response. Please try rephrasing your question."
+                    
+                    # Display the answer
+                    st.markdown(answer)
+                    
+                    # Optionally display sources
+                    if st.session_state.get("show_sources", False):
+                        source_docs = response_data.get("source_documents", [])
+                        if source_docs:
+                            with st.expander(f"📚 Sources ({len(source_docs)} documents)"):
+                                for i, doc in enumerate(source_docs[:5]):
+                                    metadata = doc.metadata
+                                    source = metadata.get('source', 'Unknown')
+                                    page = metadata.get('page', 'N/A')
+                                    content_type = metadata.get('content_type', 'text')
+                                    
+                                    st.text(f"{i+1}. {source} (Page: {page}, Type: {content_type})")
+                                    
+                                    content_preview = doc.page_content[:300]
+                                    if len(doc.page_content) > 300:
+                                        content_preview += "..."
+                                    st.text(content_preview)
+                                    st.divider()
+                        else:
+                            st.warning("No source documents were retrieved.")
+                
+                except Exception as e:
+                    logger.error(f"Error processing message: {e}")
+                    st.error(f"An error occurred: {str(e)}")
+                    response_data = {
+                        "answer": "I apologize, but I encountered an error. Please try rephrasing your question.",
+                        "total_tokens": 0,
+                        "total_cost_usd": 0.0
+                    }
         
-        # Add assistant message
-        st.session_state.messages.append({"role": "assistant", "content": response_data["answer"]})
+        # Add assistant message - unified role
+        st.session_state.messages.append({"role": ASSISTANT_ROLE, "content": response_data["answer"]})
         
         # Update stats
         self._update_statistics(response_data)
@@ -240,10 +285,17 @@ class TechnicalDocumentApp:
         with st.spinner("Generating summary..."):
             try:
                 response_data = rag_engine.generate_summary()
-                st.session_state.document_summary = response_data['answer']
-                self._update_statistics(response_data)
-                st.success("Summary generated!")
+                
+                if response_data.get("answer"):
+                    st.session_state.document_summary = response_data['answer']
+                    self._update_statistics(response_data)
+                    st.success("Summary generated!")
+                    st.rerun()
+                else:
+                    st.error("Failed to generate summary - empty response")
+                    
             except Exception as e:
+                logger.error(f"Error generating summary: {e}")
                 st.error(f"Failed to generate summary: {e}")
     
     def _update_statistics(self, response_data: Dict[str, Any]):
@@ -285,7 +337,7 @@ What would you like to explore?"""
             st.error("Failed to create directories.")
             return
         
-        # Initialize app components first
+        # Initialize app components
         vector_manager, rag_engine = initialize_app()
         
         if not vector_manager or not rag_engine:
