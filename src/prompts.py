@@ -24,16 +24,18 @@ NATURAL FOLLOW-UPS: Handle follow-up questions, clarifications, and elaborations
 
 Stay focused on the current conversation thread and provide relevant, contextual responses.
 
-MANDATORY CITATION REQUIREMENTS:
-- ALWAYS provide source citations for every factual claim, code example, or data point
-- Use EXACT format: [Source: filename] or [Source: filename, Page: X]
+MANDATORY CITATION REQUIREMENTS (INLINE):
+- ALWAYS provide an inline citation **immediately after** every sentence, bullet, or paragraph. EVERY line of the answer must end with a citation in the format `[filename]` or `[filename, Page: X]` (e.g., "PyTorch uses dynamic graphs [pytorch_tutorial.pdf, Page: 4]"). If multiple pages are relevant, list them comma-separated, e.g., `[pytorch_tutorial.pdf, Page: 3,4,5]`.
+- Use EXACT format: `[filename]` or `[filename, Page: X]` right at the END of the sentence/line it supports (no extra spaces afterwards).
 - Use page numbers when they are provided in the context headers
-- For tables: Always include [Source: filename, Page: X] when referencing table data
-- For multiple sources: [Source: file1.pdf, Page: 5; file2.pdf, Page: 12]
+- For tables: Always include `[filename, Page: X]` when referencing table data
+- For multiple sources: `[file1.pdf, Page: 5; file2.pdf, Page: 12]`
 - ONLY cite sources that appear in the "AVAILABLE CONTEXT" section above
 - Keep citations concise and accurate
 - NEVER provide information without proper citations
+
 - If you cannot find specific information in the context, state "This information is not available in the provided documents"
+- DO NOT add a separate "Sources" section at the end; citations must remain inline only.
 
 TECHNICAL RESPONSE GUIDELINES:
 
@@ -52,7 +54,7 @@ TECHNICAL RESPONSE GUIDELINES:
 3. **Source Verification**:
    - Only reference information that exists in the provided context
    - If information is not available, clearly state this limitation
-   - Always include page numbers when available in source headers
+   - ALWAYS include page numbers when available in context headers
    - NEVER provide uncited information or general knowledge
    - Every claim must have a citation from the provided context
 
@@ -88,34 +90,34 @@ DOCUMENTS TO SUMMARIZE:
 Create a structured technical summary with the following sections:
 
 ## DOCUMENT OVERVIEW
-- **Scope and Purpose**: Main technical topics covered [Source: filename]
-- **Target Audience**: Intended users and technical level [Source: filename]
-- **Document Structure**: Key sections and organization [Source: filename]
+- **Scope and Purpose**: Main technical topics covered
+- **Target Audience**: Intended users and technical level
+- **Document Structure**: Key sections and organization
 
 ## CORE TECHNICAL CONCEPTS
-- **Primary Technologies**: Main technologies, frameworks, or methodologies [Source: filename]
-- **Key Definitions**: Important technical terms and concepts [Source: filename]
-- **Theoretical Background**: Underlying principles or theories [Source: filename]
+- **Primary Technologies**: Main technologies, frameworks, or methodologies
+- **Key Definitions**: Important technical terms and concepts
+- **Theoretical Background**: Underlying principles or theories
 
 ## IMPLEMENTATION AND PROCEDURES
-- **Setup and Configuration**: Installation, setup steps, or prerequisites [Source: filename]
-- **Core Procedures**: Main workflows, processes, or methodologies [Source: filename]
-- **Code Examples**: Key code snippets or implementation patterns [Source: filename]
-- **Best Practices**: Recommended approaches or guidelines [Source: filename]
+- **Setup and Configuration**: Installation, setup steps, or prerequisites
+- **Core Procedures**: Main workflows, processes, or methodologies
+- **Code Examples**: Key code snippets or implementation patterns
+- **Best Practices**: Recommended approaches or guidelines
 
 ## TECHNICAL DATA AND RESULTS
-- **Performance Metrics**: Benchmarks, measurements, or performance data [Source: filename]
-- **Technical Specifications**: Hardware/software requirements, parameters [Source: filename]
-- **Tables and Datasets**: Key data tables or datasets [Source: filename]
-- **Research Findings**: Results, conclusions, or key insights [Source: filename]
+- **Performance Metrics**: Benchmarks, measurements, or performance data
+- **Technical Specifications**: Hardware/software requirements, parameters
+- **Tables and Datasets**: Key data tables or datasets
+- **Research Findings**: Results, conclusions, or key insights
 
 ## PRACTICAL APPLICATIONS
-- **Use Cases**: Practical applications or scenarios [Source: filename]
-- **Examples**: Real-world implementations or case studies [Source: filename]
-- **Troubleshooting**: Common issues and solutions [Source: filename]
+- **Use Cases**: Practical applications or scenarios
+- **Examples**: Real-world implementations or case studies
+- **Troubleshooting**: Common issues and solutions
 
 IMPORTANT: 
-- Include proper source citations for EVERY section using [Source: filename] or [Source: filename, Page: X]
+- Provide citations **only when specific information is drawn from a particular document/page**. Avoid citing after generic or obvious statements. When you do cite, use `[filename]` or `[filename, Page: X]`.
 - Only include information that exists in the provided context
 - Be specific and technical in your descriptions
 - Include exact code examples, parameters, or data points when available

@@ -56,6 +56,8 @@ class Config:
     CHUNK_OVERLAP: int = 200
     
     # Retrieval settings
+    MAX_CONTEXT_CHARS: int = 12000  # hard limit for combined context length
+    SUMMARY_K: int = 40  # number of chunks to pull for summary
     RETRIEVAL_K: int = 9
     SEARCH_TYPE: str = "similarity"
     

@@ -109,12 +109,20 @@ class RAGEngine:
                 return self._error_response("Vector store not ready")
             
             with get_openai_callback() as cb:
-                retriever = self.vector_manager.get_retriever()
+                # Create a retriever that fetches ALL documents to build a complete summary
+                doc_count = self.vector_manager.get_document_count()
+                retriever = self.vector_manager.vector_store.as_retriever(
+                    search_type=Config.SEARCH_TYPE,
+                    search_kwargs={"k": min(doc_count, Config.SUMMARY_K)}
+                )
                 if not retriever:
                     return self._error_response("Could not create retriever")
-                
-                # Get diverse documents for summary
-                docs = retriever.invoke("overview methods procedures implementation results")
+
+                # Retrieve a broad sample of all docs
+                docs = retriever.invoke("overview")
+                # Ensure we don't exceed SUMMARY_K
+                if len(docs) > Config.SUMMARY_K:
+                    docs = docs[:Config.SUMMARY_K]
                 
                 if not docs:
                     return self._error_response("No documents for summary")
@@ -139,25 +147,30 @@ class RAGEngine:
             return self._error_response(f"Summary error: {str(e)}")
     
     def _create_context(self, documents: List) -> str:
-        """Create context from documents."""
+        """Create context from documents with length control."""
         if not documents:
             return "No documents found."
         
         context_parts = []
+        total_chars = 0
+        max_chars = getattr(Config, "MAX_CONTEXT_CHARS", 12000)
         
         for doc in documents:
             metadata = doc.metadata
             source = metadata.get('source', 'Unknown')
             page = metadata.get('page')
-            content_type = metadata.get('content_type', 'text')
-            
-            # Create source header
-            if page:
-                header = f"[{content_type.upper()} - Source: {source}, Page: {page}]"
+
+            # Create source header strictly matching citation format
+            if page is not None:
+                header = f"[{source}, Page: {page}]"
             else:
-                header = f"[{content_type.upper()} - Source: {source}]"
+                header = f"[{source}]"
             
-            context_parts.append(f"{header}\n{doc.page_content}\n")
+            part = f"{header}\n{doc.page_content}\n"
+            if total_chars + len(part) > max_chars:
+                break
+            context_parts.append(part)
+            total_chars += len(part)
         
         return "\n".join(context_parts)
     
@@ -209,12 +222,17 @@ class RAGEngine:
                 history_parts.append(f"Human: {user_content}")
                 history_parts.append(f"Assistant: {assistant_content}")
         
-        return "\n".join(history_parts) if history_parts else "No previous conversation."
+        history_text = "\n".join(history_parts) if history_parts else "No previous conversation."
+        # Truncate history to keep prompt within context window
+        max_history_chars = 4000
+        if len(history_text) > max_history_chars:
+            history_text = history_text[-max_history_chars:]
+        return history_text
     
     def _is_welcome_message(self, message: Dict) -> bool:
         """Check if message is welcome message."""
         content = message.get('content', '').lower()
-        return 'welcome' in content or 'technical document assistant' in content
+        return 'welcome' in content or 'technical document assistant' in content or 'technical documentation assistant' in content
     
 
     
@@ -227,13 +245,3 @@ class RAGEngine:
             "completion_tokens": 0,
             "total_cost_usd": 0.0
         }
-
-
-def main():
-    """Main function."""
-    app = TechnicalDocumentApp()
-    app.run()
-
-
-if __name__ == "__main__":
-    main()
