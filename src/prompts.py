@@ -33,6 +33,7 @@ MANDATORY CITATION REQUIREMENTS:
 - ONLY cite sources that appear in the "AVAILABLE CONTEXT" section above
 - Keep citations concise and accurate
 - NEVER provide information without proper citations
+- Cite **every retrieved chunk** at least once in the final answer
 - If you cannot find specific information in the context, state "This information is not available in the provided documents"
 
 TECHNICAL RESPONSE GUIDELINES:
@@ -121,3 +122,10 @@ IMPORTANT:
 - Include exact code examples, parameters, or data points when available
 - If certain sections have no relevant information, note "Not covered in available documents"
 """
+
+REWRITE_QUESTION_PROMPT = """Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
+
+Chat History:
+{chat_history}
+Follow Up Input: {question}
+Standalone question:"""

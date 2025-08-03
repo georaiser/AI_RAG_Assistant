@@ -10,7 +10,7 @@ from langchain_community.callbacks import get_openai_callback
 from langchain.prompts import PromptTemplate
 from langchain.schema import HumanMessage
 from vector_store import VectorStoreManager
-from prompts import SYSTEM_TEMPLATE, SUMMARY_TEMPLATE
+from prompts import REWRITE_QUESTION_PROMPT, SYSTEM_TEMPLATE, SUMMARY_TEMPLATE
 from config import Config
 from pydantic import SecretStr
 
@@ -38,12 +38,15 @@ class RAGEngine:
                 return self._error_response("Vector store not ready")
             
             with get_openai_callback() as cb:
+                # Rewrite query for conversational context
+                final_query = self._rewrite_query(query, chat_history)
+
                 # Get retriever and search documents
                 retriever = self.vector_manager.get_retriever()
                 if not retriever:
                     return self._error_response("Could not create retriever")
                 
-                docs = retriever.invoke(query)
+                docs = retriever.invoke(final_query)
                 
                 if not docs:
                     return {
@@ -139,77 +142,133 @@ class RAGEngine:
             return self._error_response(f"Summary error: {str(e)}")
     
     def _create_context(self, documents: List) -> str:
-        """Create context from documents."""
+        """Create context from retrieved documents, ensuring unique headers."""
         if not documents:
             return "No documents found."
-        
-        context_parts = []
-        
+
+        context_parts: List[str] = []
+        seen_headers: set[str] = set()
+
         for doc in documents:
-            metadata = doc.metadata
-            source = metadata.get('source', 'Unknown')
-            page = metadata.get('page')
-            content_type = metadata.get('content_type', 'text')
-            
-            # Create source header
-            if page:
+            metadata = doc.metadata or {}
+            source = metadata.get("source", "Unknown")
+            # Some loaders store page information under different keys
+            page = metadata.get("page") or metadata.get("page_number")
+            content_type = metadata.get("content_type", "text")
+
+            # Build header
+            if page is not None:
                 header = f"[{content_type.upper()} - Source: {source}, Page: {page}]"
             else:
                 header = f"[{content_type.upper()} - Source: {source}]"
-            
-            context_parts.append(f"{header}\n{doc.page_content}\n")
-        
+
+            # Add to context only if header not yet used (prevents duplication)
+            if header not in seen_headers:
+                context_parts.append(f"{header}\n{doc.page_content}\n")
+                seen_headers.add(header)
+
         return "\n".join(context_parts)
+
+    def _rewrite_query(self, query: str, chat_history: List[Dict]) -> str:
+        """Rewrite a follow-up query to be a standalone query."""
+        # If history is short, no need to rewrite
+        if len(chat_history) <= 1:
+            return query
+
+        history = self._format_history(chat_history, for_rewrite=True)
+        if history == "No previous conversation.":
+            return query
+
+        prompt = PromptTemplate(
+            template=REWRITE_QUESTION_PROMPT,
+            input_variables=["chat_history", "question"],
+        )
+        prompt_text = prompt.format(chat_history=history, question=query)
+
+        try:
+            logger.info(f"Rewriting query: '{query}'")
+            response = self.llm.invoke([HumanMessage(content=prompt_text)])
+            rewritten_query = response.content.strip()
+
+            # Basic validation: if the model returns an empty string or the original query, stick with the original
+            if rewritten_query and rewritten_query.lower() != query.lower():
+                logger.info(f"Rewritten query: '{rewritten_query}'")
+                return rewritten_query
+            else:
+                logger.info("Query rewrite returned original or empty, using original.")
+                return query
+        except Exception as e:
+            logger.error(f"Error during query rewrite: {e}")
+            return query  # Fallback to original query on error
     
-    def _format_history(self, messages: List[Dict]) -> str:
+    def _format_history(self, messages: List[Dict], for_rewrite: bool = False) -> str:
         """Format chat history with proper role handling."""
         if len(messages) <= 1:
             return "No previous conversation."
         
+        # For query rewriting, we include the last user message
+        end_offset = 0 if for_rewrite else 1
+
         # Get relevant messages (skip welcome message and current message)
         relevant = []
         for i, msg in enumerate(messages):
-            # Skip welcome message and current message (last one)
-            if i == 0 or i == len(messages) - 1:
+            # Skip system/welcome message and current user message (if not for_rewrite)
+            if i == 0 or i == len(messages) - end_offset:
                 continue
             if not self._is_welcome_message(msg):
                 relevant.append(msg)
-        
+
         # Take last 3 exchanges (6 messages: 3 user + 3 assistant) to understand conversation flow
         if len(relevant) > 6:
             relevant = relevant[-6:]
-        
+
         history_parts = []
         i = 0
         while i < len(relevant):
-            # Find user message
-            user_msg = None
-            assistant_msg = None
-            
-            # Look for user message
-            while i < len(relevant) and relevant[i]["role"] != "user":
-                i += 1
-            if i < len(relevant):
+            # Find next user and assistant messages in order
+            if relevant[i]["role"] == "user":
                 user_msg = relevant[i]
                 i += 1
-            
-            # Look for corresponding assistant message
-            while i < len(relevant) and relevant[i]["role"] != "assistant":
-                i += 1
-            if i < len(relevant):
+                # Look ahead for next assistant message
+                assistant_msg = None
+                while i < len(relevant) and relevant[i]["role"] != "assistant":
+                    i += 1
+                if i < len(relevant) and relevant[i]["role"] == "assistant":
+                    assistant_msg = relevant[i]
+                    i += 1
+                else:
+                    assistant_msg = None
+                # Add the exchange
+                user_content = (
+                    user_msg['content'][:200] + "..."
+                    if len(user_msg['content']) > 200
+                    else user_msg['content']
+                )
+                if assistant_msg:
+                    if len(assistant_msg['content']) > 400:
+                        head = assistant_msg['content'][:250]
+                        tail = assistant_msg['content'][-120:]
+                        assistant_content = f"{head}…{tail}"
+                    else:
+                        assistant_content = assistant_msg['content']
+                    history_parts.append(f"Human: {user_content}")
+                    history_parts.append(f"Assistant: {assistant_content}")
+                else:
+                    history_parts.append(f"Human: {user_content}")
+            else:
+                # If role is assistant and not paired, just add as assistant
                 assistant_msg = relevant[i]
                 i += 1
-            
-            # Add the exchange if we have both messages
-            if user_msg and assistant_msg:
-                # Truncate content to avoid context overflow but keep enough for context
-                user_content = user_msg['content'][:200] + "..." if len(user_msg['content']) > 200 else user_msg['content']
-                assistant_content = assistant_msg['content'][:300] + "..." if len(assistant_msg['content']) > 300 else assistant_msg['content']
-                
-                history_parts.append(f"Human: {user_content}")
+                if len(assistant_msg['content']) > 400:
+                    head = assistant_msg['content'][:250]
+                    tail = assistant_msg['content'][-120:]
+                    assistant_content = f"{head}…{tail}"
+                else:
+                    assistant_content = assistant_msg['content']
                 history_parts.append(f"Assistant: {assistant_content}")
-        
+
         return "\n".join(history_parts) if history_parts else "No previous conversation."
+
     
     def _is_welcome_message(self, message: Dict) -> bool:
         """Check if message is welcome message."""

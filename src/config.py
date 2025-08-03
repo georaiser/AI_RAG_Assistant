@@ -56,8 +56,8 @@ class Config:
     CHUNK_OVERLAP: int = 200
     
     # Retrieval settings
-    RETRIEVAL_K: int = 9
-    SEARCH_TYPE: str = "similarity"
+    RETRIEVAL_K: int = 12
+    SEARCH_TYPE: str = "mmr"
     
     AVAILABLE_SEARCH_TYPES: List[str] = [
         "similarity",
@@ -66,7 +66,7 @@ class Config:
     ]
     
     # Search parameters
-    FETCH_K: int = 20
+    FETCH_K: int = 50
     LAMBDA_MULT: float = 0.7
     SCORE_THRESHOLD: float = 0.4
     
