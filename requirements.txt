@@ -1,23 +1,28 @@
-# Core dependencies
-streamlit>=1.28.0
+# Requirements for LangGraph RAG Implementation
+
+# Core LangGraph and LangChain
+langgraph>=0.0.60
 langchain>=0.1.0
 langchain-openai>=0.1.0
-langchain-community>=0.1.0
-langchain-huggingface>=0.1.0
+langchain-community>=0.0.20
+langchain-huggingface>=0.0.1
 langchain-chroma>=0.1.0
-
-# Document processing
-pdfplumber>=0.9.0
-python-docx>=0.8.11
-pandas>=2.0.0
 
 # Vector store and embeddings
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
 
-# Environment and utilities
+# Document processing
+pdfplumber>=0.9.0
+python-docx>=0.8.11
+pandas>=1.5.0
+
+# Streamlit and web app
+streamlit>=1.28.0
+
+# Utilities
 python-dotenv>=1.0.0
-pathlib
+pydantic>=2.0.0
 
 # Optional: For better performance
-tiktoken>=0.5.0
+# torch>=2.0.0  # Uncomment if using HuggingFace embeddings

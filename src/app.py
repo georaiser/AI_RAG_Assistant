@@ -11,7 +11,9 @@ from typing import Dict, Any
 from config import Config
 from data_loader import load_data
 from vector_store import VectorStoreManager
-from backend import RAGEngine
+#from backend import RAGEngine # Uncomment this line to use langchain's RAGEngine
+from langgraph_rag import LangGraphRAGEngine as RAGEngine # to use langgraph's RAGEngine
+
 
 # Configure logging
 logging.basicConfig(
