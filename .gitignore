@@ -13,7 +13,7 @@ config.yaml
 # Otros archivos del sistema
 .DS_Store
 .vscode/
-*.zip
+#*.zip
 *.tar.gz
 
 library.pdf
