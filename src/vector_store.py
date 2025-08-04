@@ -1,6 +1,6 @@
 # vector_store.py
 """
-Enhanced vector store management with better error handling and retriever configuration.
+Vector store management with improved error handling and debugging.
 """
 
 import logging
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class VectorStoreManager:
-    """Enhanced vector store manager with better retriever handling."""
+    """Vector store manager with improved error handling."""
     
     def __init__(self):
         """Initialize with embeddings."""
@@ -26,34 +26,36 @@ class VectorStoreManager:
         self._create_embeddings()
     
     def _create_embeddings(self):
-        """Create embedding model."""
+        """Create embedding model with better error handling."""
         try:
             if Config.EMBEDDING_TYPE == "openai":
+                if not Config.OPENAI_API_KEY:
+                    raise ValueError("OpenAI API key required for OpenAI embeddings")
+                
                 self.embeddings = OpenAIEmbeddings(
                     model=Config.OPENAI_EMBEDDING_MODEL,
                     api_key=SecretStr(Config.OPENAI_API_KEY)
                 )
+                logger.info(f"Created OpenAI embeddings: {Config.OPENAI_EMBEDDING_MODEL}")
             else:
                 self.embeddings = HuggingFaceEmbeddings(
                     model_name=Config.HF_EMBEDDING_MODEL,
                     model_kwargs={'device': 'cpu'},
                     encode_kwargs={'normalize_embeddings': True}
                 )
-            
-            logger.info(f"Embeddings created: {Config.EMBEDDING_TYPE}")
+                logger.info(f"Created HuggingFace embeddings: {Config.HF_EMBEDDING_MODEL}")
             
         except Exception as e:
             logger.error(f"Failed to create embeddings: {e}")
             raise
     
     def initialize_vector_store(self, documents: List[Document]) -> bool:
-        """Create new vector store - only when needed."""
+        """Create new vector store with better validation."""
         if not documents:
             logger.error("No documents provided")
             return False
         
         try:
-            # Only create directory if it doesn't exist
             Config.VECTOR_STORE_PATH.mkdir(parents=True, exist_ok=True)
             
             # Filter valid documents
@@ -63,7 +65,11 @@ class VectorStoreManager:
                 logger.error("No valid documents with content")
                 return False
             
-            logger.info(f"Creating vector store with {len(valid_docs)} documents")
+            if Config.DEBUG_MODE:
+                logger.info(f"Creating vector store with {len(valid_docs)} documents")
+                # Log sample of document sources
+                sources = set(doc.metadata.get('source', 'Unknown') for doc in valid_docs[:10])
+                logger.info(f"Sample sources: {list(sources)}")
             
             # Create vector store
             self.vector_store = Chroma.from_documents(
@@ -72,8 +78,8 @@ class VectorStoreManager:
                 persist_directory=str(Config.VECTOR_STORE_PATH)
             )
             
-            # Verify it worked
-            count = self.vector_store._collection.count()
+            # Verify creation
+            count = self._get_safe_count()
             if count == 0:
                 logger.error("Vector store created but has no documents")
                 return False
@@ -87,17 +93,24 @@ class VectorStoreManager:
             return False
     
     def load_vector_store(self) -> bool:
-        """Load existing vector store."""
+        """Load existing vector store with improved validation."""
         try:
-            # Check if directory exists and has content
+            # Check if directory exists
             if not Config.VECTOR_STORE_PATH.exists():
-                logger.info("Vector store directory doesn't exist")
+                if Config.DEBUG_MODE:
+                    logger.info("Vector store directory doesn't exist")
                 return False
             
-            # Check for Chroma database files
-            chroma_files = list(Config.VECTOR_STORE_PATH.glob("*.parquet")) + list(Config.VECTOR_STORE_PATH.glob("chroma.sqlite3"))
+            # Check for Chroma files
+            chroma_files = (
+                list(Config.VECTOR_STORE_PATH.glob("*.parquet")) + 
+                list(Config.VECTOR_STORE_PATH.glob("chroma.sqlite3")) +
+                list(Config.VECTOR_STORE_PATH.glob("*.db"))
+            )
+            
             if not chroma_files:
-                logger.info("No Chroma database files found")
+                if Config.DEBUG_MODE:
+                    logger.info("No Chroma database files found")
                 return False
             
             # Load vector store
@@ -107,10 +120,9 @@ class VectorStoreManager:
             )
             
             # Verify it has documents
-            count = self.vector_store._collection.count()
+            count = self._get_safe_count()
             if count == 0:
-                logger.error("Vector store loaded but has no documents")
-                self.vector_store = None
+                logger.warning("Vector store loaded but appears empty")
                 return False
             
             logger.info(f"Vector store loaded with {count} documents")
@@ -121,35 +133,35 @@ class VectorStoreManager:
             self.vector_store = None
             return False
     
+    def _get_safe_count(self) -> int:
+        """Safely get document count."""
+        try:
+            if self.vector_store and hasattr(self.vector_store, '_collection'):
+                return self.vector_store._collection.count()
+            return 0
+        except Exception as e:
+            if Config.DEBUG_MODE:
+                logger.warning(f"Could not get document count: {e}")
+            return 0
+    
     def is_ready(self) -> bool:
         """Check if vector store is ready."""
-        if not self.vector_store:
-            return False
-        
-        try:
-            count = self.vector_store._collection.count()
-            return count > 0
-        except:
-            return False
+        ready = self.vector_store is not None and self._get_safe_count() > 0
+        if Config.VERBOSE_MODE:
+            logger.info(f"Vector store ready: {ready}")
+        return ready
     
     def get_retriever(self, search_type: Optional[str] = None, search_kwargs: Optional[Dict] = None):
-        """
-        Get retriever for document search with enhanced configuration.
-        
-        Args:
-            search_type: Override default search type
-            search_kwargs: Override default search kwargs
-        """
+        """Get retriever with improved configuration."""
         if not self.is_ready():
             logger.error("Vector store not ready")
             return None
         
         try:
-            # Use provided parameters or fall back to config defaults
+            # Use config defaults if not specified
             final_search_type = search_type or Config.SEARCH_TYPE
             
             if search_kwargs is None:
-                # Build default search kwargs based on search type
                 search_kwargs = {"k": Config.RETRIEVAL_K}
                 
                 if final_search_type == "mmr":
@@ -165,7 +177,9 @@ class VectorStoreManager:
                 search_kwargs=search_kwargs
             )
             
-            logger.info(f"Retriever created with {final_search_type}, k={search_kwargs.get('k', 'default')}")
+            if Config.DEBUG_MODE:
+                logger.info(f"Created retriever: {final_search_type}, k={search_kwargs.get('k')}")
+            
             return retriever
             
         except Exception as e:
@@ -174,12 +188,7 @@ class VectorStoreManager:
     
     def get_document_count(self) -> int:
         """Get document count."""
-        try:
-            if self.vector_store:
-                return self.vector_store._collection.count()
-            return 0
-        except:
-            return 0
+        return self._get_safe_count()
     
     def delete_vector_store(self) -> bool:
         """Delete vector store."""
@@ -194,17 +203,38 @@ class VectorStoreManager:
             logger.error(f"Error deleting vector store: {e}")
             return False
     
+    def get_loaded_files(self) -> List[str]:
+        """Get list of loaded filenames from vector store metadata."""
+        if not self.is_ready():
+            return []
+        
+        try:
+            # Get sample documents to extract unique filenames
+            sample_docs = self.vector_store.similarity_search("", k=50)
+            filenames = set()
+            
+            for doc in sample_docs:
+                source = doc.metadata.get('source')
+                if source and isinstance(source, str) and len(source) > 0:
+                    # Basic validation - should have extension
+                    if '.' in source and not source.startswith('.'):
+                        filenames.add(source)
+            
+            result = sorted(list(filenames))
+            
+            if Config.DEBUG_MODE:
+                logger.info(f"Found {len(result)} unique files in vector store")
+                if Config.VERBOSE_MODE and result:
+                    logger.info(f"Files: {result[:5]}{'...' if len(result) > 5 else ''}")
+            
+            return result if result else ["documents"]  # Fallback
+            
+        except Exception as e:
+            logger.warning(f"Could not get loaded files: {e}")
+            return ["documents"]  # Fallback
+    
     def search_documents(self, query: str, k: int = None) -> List[Document]:
-        """
-        Direct document search for testing/debugging.
-        
-        Args:
-            query: Search query
-            k: Number of documents to return (default: Config.RETRIEVAL_K)
-        
-        Returns:
-            List of retrieved documents
-        """
+        """Direct document search for testing."""
         if not self.is_ready():
             logger.error("Vector store not ready for search")
             return []
@@ -213,7 +243,10 @@ class VectorStoreManager:
             k = k or Config.RETRIEVAL_K
             retriever = self.get_retriever(search_kwargs={"k": k})
             if retriever:
-                return retriever.invoke(query)
+                results = retriever.invoke(query)
+                if Config.VERBOSE_MODE:
+                    logger.info(f"Search '{query[:20]}...' returned {len(results)} results")
+                return results
             return []
         except Exception as e:
             logger.error(f"Error in document search: {e}")

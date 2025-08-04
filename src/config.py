@@ -1,6 +1,6 @@
 # config.py
 """
-Enhanced configuration settings for the RAG project.
+Configuration settings for the RAG project with improved validation.
 """
 
 import os
@@ -35,10 +35,9 @@ class Config:
     
     # Embedding settings
     EMBEDDING_TYPE: Literal["openai", "huggingface"] = "huggingface"
-
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-    
+
     AVAILABLE_OPENAI_EMBEDDINGS: List[str] = [
         "text-embedding-3-small",
         "text-embedding-3-large",
@@ -55,83 +54,81 @@ class Config:
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     
-    # Enhanced retrieval settings
-    MAX_CONTEXT_CHARS: int = 12000  # Hard limit for combined context length
-    SUMMARY_K: int = 40  # Number of chunks to pull for summary
-    RETRIEVAL_K: int = 9  # Default number of documents to retrieve
-    SEARCH_TYPE: str = "mmr"  # Changed default to MMR for better diversity
-    
+    # Retrieval settings
+    MAX_CONTEXT_CHARS: int = 12000
+    SUMMARY_K: int = 20
+    RETRIEVAL_K: int = 6
+    SEARCH_TYPE: str = "mmr"
+
     AVAILABLE_SEARCH_TYPES: List[str] = [
         "similarity",
         "mmr",
         "similarity_score_threshold"
-    ]
-    
-    # Enhanced search parameters for better retrieval
-    FETCH_K: int = 20  # Number of documents to fetch before MMR filtering
-    LAMBDA_MULT: float = 0.7  # Balance between relevance (1.0) and diversity (0.0)
-    SCORE_THRESHOLD: float = 0.4  # Minimum similarity score threshold
-    
-    # Conversation settings
-    MAX_CONVERSATION_HISTORY: int = 6  # Maximum messages to keep in history (3 exchanges)
-    MAX_MESSAGE_LENGTH: int = 500  # Maximum length for individual messages in history
+    ]    
+
+    # MMR parameters
+    FETCH_K: int = 12
+    LAMBDA_MULT: float = 0.7
+    SCORE_THRESHOLD: float = 0.4
     
     # App settings
     APP_TITLE: str = "Technical Document Assistant"
     
     # Debug settings
-    DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() == "true"
-    VERBOSE_LOGGING: bool = os.getenv("VERBOSE_LOGGING", "false").lower() == "true"
+    DEBUG_MODE: bool = True  
+    VERBOSE_MODE: bool = False  # Changed to False by default
         
     @classmethod
     def validate(cls) -> bool:
-        """Validate critical settings."""
+        """Validate critical settings with better error messages."""
+        errors = []
+        
         if not cls.OPENAI_API_KEY:
-            print("ERROR: OPENAI_API_KEY is required")
-            return False
+            errors.append("OPENAI_API_KEY is required")
         
-        if cls.CHUNK_SIZE <= 0 or cls.CHUNK_OVERLAP >= cls.CHUNK_SIZE:
-            print("ERROR: Invalid chunk settings")
-            return False
+        if cls.CHUNK_SIZE <= 0:
+            errors.append("CHUNK_SIZE must be positive")
+            
+        if cls.CHUNK_OVERLAP >= cls.CHUNK_SIZE:
+            errors.append("CHUNK_OVERLAP must be less than CHUNK_SIZE")
         
-        if cls.RETRIEVAL_K <= 0 or cls.FETCH_K < cls.RETRIEVAL_K:
-            print("ERROR: Invalid retrieval settings - FETCH_K must be >= RETRIEVAL_K")
-            return False
+        if cls.RETRIEVAL_K <= 0:
+            errors.append("RETRIEVAL_K must be positive")
+            
+        if cls.FETCH_K < cls.RETRIEVAL_K:
+            errors.append("FETCH_K must be >= RETRIEVAL_K")
         
         if not 0.0 <= cls.LAMBDA_MULT <= 1.0:
-            print("ERROR: LAMBDA_MULT must be between 0.0 and 1.0")
-            return False
-        
+            errors.append("LAMBDA_MULT must be between 0.0 and 1.0")
+
         if cls.EMBEDDING_TYPE not in ["openai", "huggingface"]:
-            print("ERROR: EMBEDDING_TYPE must be 'openai' or 'huggingface'")
+            errors.append("EMBEDDING_TYPE must be 'openai' or 'huggingface'")
+        
+        if cls.SEARCH_TYPE not in cls.AVAILABLE_SEARCH_TYPES:
+            errors.append(f"SEARCH_TYPE must be one of {cls.AVAILABLE_SEARCH_TYPES}")
+        
+        if errors:
+            for error in errors:
+                print(f"ERROR: {error}")
             return False
         
         return True
     
     @classmethod
     def setup_directories(cls) -> bool:
-        """Create necessary directories."""
+        """Create necessary directories with better error handling."""
         try:
             cls.DATA_DIR.mkdir(exist_ok=True)
             cls.VECTOR_STORE_PATH.mkdir(exist_ok=True)
+            
             if cls.PROCESS_MULTIPLE_DOCUMENTS:
                 cls.DOCUMENTS_DIR.mkdir(exist_ok=True)
+                print(f"Created documents directory: {cls.DOCUMENTS_DIR}")
+            else:
+                if not cls.SINGLE_DOCUMENT_PATH.exists():
+                    print(f"WARNING: Single document not found: {cls.SINGLE_DOCUMENT_PATH}")
+            
             return True
         except Exception as e:
             print(f"ERROR: Failed to create directories: {e}")
             return False
-    
-    @classmethod
-    def get_search_config(cls) -> dict:
-        """Get search configuration based on search type."""
-        base_config = {"k": cls.RETRIEVAL_K}
-        
-        if cls.SEARCH_TYPE == "mmr":
-            base_config.update({
-                "fetch_k": cls.FETCH_K,
-                "lambda_mult": cls.LAMBDA_MULT
-            })
-        elif cls.SEARCH_TYPE == "similarity_score_threshold":
-            base_config["score_threshold"] = cls.SCORE_THRESHOLD
-        
-        return base_config

@@ -1,6 +1,6 @@
 # backend.py
 """
-Unified RAG Engine with simplified role handling - only user/assistant roles.
+RAG Engine with fixed role handling and improved citations.
 """
 
 import logging
@@ -17,13 +17,13 @@ from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
-# UNIFIED ROLE CONSTANTS - Only two roles needed
+# Simple role constants
 USER_ROLE = "user"
 ASSISTANT_ROLE = "assistant"
 
 
 class RAGEngine:
-    """Unified RAG engine with simplified role handling."""
+    """RAG engine with fixed conversation handling."""
     
     def __init__(self, vector_manager: VectorStoreManager):
         """Initialize RAG engine."""
@@ -66,17 +66,18 @@ class RAGEngine:
         return self._chain
     
     def process_query(self, query: str, chat_history: List[Dict]) -> Dict[str, Any]:
-        """Process a user query with simplified role handling."""
+        """Process a user query with improved error handling."""
         try:
             chain = self._get_chain()
             if not chain:
                 return self._error_response("Failed to create conversation chain")
             
-            # Format chat history - simplified, no complex role mapping
+            # Format chat history - exclude current query and welcome message
             formatted_history = self._format_chat_history(chat_history)
             
-            if formatted_history:
-                logger.info(f"Using {len(formatted_history)} conversation exchanges for context")
+            if Config.DEBUG_MODE:
+                logger.info(f"Processing query: {query[:100]}...")
+                logger.info(f"Chat history length: {len(formatted_history)} pairs")
             
             with get_openai_callback() as cb:
                 result = chain.invoke({
@@ -84,23 +85,18 @@ class RAGEngine:
                     "chat_history": formatted_history
                 })
                 
-                # Log retrieval quality
+                answer = result.get("answer", "")
                 source_docs = result.get("source_documents", [])
-                if source_docs:
-                    logger.info(f"Retrieved {len(source_docs)} documents for context")
-                    # Check citation format
-                    docs_with_proper_headers = sum(
-                        1 for doc in source_docs 
-                        if doc.page_content.startswith('[') and ']' in doc.page_content
-                    )
-                    logger.info(f"Documents with proper headers: {docs_with_proper_headers}/{len(source_docs)}")
-                else:
-                    logger.warning("No source documents retrieved")
                 
-                # Validate answer completeness
-                answer = result["answer"]
-                if len(answer.strip()) < 50:
-                    logger.warning(f"Short answer generated: {len(answer)} characters")
+                # Log retrieval info
+                if Config.DEBUG_MODE:
+                    logger.info(f"Retrieved {len(source_docs)} documents")
+                    logger.info(f"Answer length: {len(answer)} characters")
+                    if Config.VERBOSE_MODE:
+                        for i, doc in enumerate(source_docs[:3]):
+                            source = doc.metadata.get('source', 'Unknown')
+                            page = doc.metadata.get('page', 'N/A')
+                            logger.info(f"Source {i+1}: {source}, Page: {page}")
                 
                 return {
                     "answer": answer,
@@ -117,49 +113,51 @@ class RAGEngine:
     
     def _format_chat_history(self, messages: List[Dict]) -> List[Tuple[str, str]]:
         """
-        Simplified chat history formatting - only handles user/assistant roles.
+        Fixed chat history formatting.
         Returns list of (human_message, ai_message) tuples.
         """
         if len(messages) <= 1:
             return []
         
-        # Filter out welcome message and current query
-        relevant_messages = []
+        # Filter messages - exclude welcome message and current query
+        filtered_messages = []
         for i, msg in enumerate(messages):
-            # Skip welcome message (first message)
-            if i == 0 and self._is_welcome_message(msg):
+            # Skip welcome message (first message with "Welcome")
+            if i == 0 and "Welcome" in msg.get("content", ""):
                 continue
             # Skip current query (last message)
             if i == len(messages) - 1:
                 continue
-            relevant_messages.append(msg)
+            filtered_messages.append(msg)
         
-        # Limit to last 6 messages (3 user-assistant pairs)
-        if len(relevant_messages) > 6:
-            relevant_messages = relevant_messages[-6:]
+        if not filtered_messages:
+            return []
         
-        # Create (user, assistant) pairs - simplified logic
+        # Keep only last 6 messages (3 exchanges) to prevent context overflow
+        if len(filtered_messages) > 6:
+            filtered_messages = filtered_messages[-6:]
+        
+        # Create user-assistant pairs
         formatted_history = []
         i = 0
-        while i < len(relevant_messages) - 1:
-            current_msg = relevant_messages[i]
-            next_msg = relevant_messages[i + 1]
+        while i < len(filtered_messages) - 1:
+            current_msg = filtered_messages[i]
+            next_msg = filtered_messages[i + 1]
             
-            # Look for user-assistant pair
             if (current_msg["role"] == USER_ROLE and 
                 next_msg["role"] == ASSISTANT_ROLE):
                 
-                user_content = current_msg["content"]
-                assistant_content = next_msg["content"]
+                # Truncate long messages to prevent context overflow
+                user_content = current_msg["content"][:400]
+                assistant_content = next_msg["content"][:500]
                 
-                # Truncate to prevent context overflow
-                user_truncated = user_content[:300] + "..." if len(user_content) > 300 else user_content
-                assistant_truncated = assistant_content[:400] + "..." if len(assistant_content) > 400 else assistant_content
-                
-                formatted_history.append((user_truncated, assistant_truncated))
-                i += 2  # Skip both messages
+                formatted_history.append((user_content, assistant_content))
+                i += 2
             else:
-                i += 1  # Move to next message
+                i += 1
+        
+        if Config.VERBOSE_MODE and formatted_history:
+            logger.info(f"Formatted {len(formatted_history)} conversation pairs")
         
         return formatted_history
     
@@ -185,6 +183,10 @@ class RAGEngine:
                 
                 context = self._create_context(docs)
                 
+                if Config.DEBUG_MODE:
+                    logger.info(f"Creating summary from {len(docs)} documents")
+                    logger.info(f"Context length: {len(context)} characters")
+                
                 prompt = PromptTemplate(
                     template=SUMMARY_TEMPLATE, 
                     input_variables=["context"]
@@ -206,67 +208,96 @@ class RAGEngine:
             return self._error_response(f"Summary error: {str(e)}")
     
     def _create_context(self, documents: List) -> str:
-        """Create context from documents with proper citation format."""
+        """Create context from documents with proper citations."""
         if not documents:
             return "No documents found."
         
+        # Group documents by source file
+        docs_by_source = {}
+        for doc in documents:
+            source = doc.metadata.get('source', 'Unknown')
+            if source not in docs_by_source:
+                docs_by_source[source] = []
+            docs_by_source[source].append(doc)
+        
         context_parts = []
         total_chars = 0
-        max_chars = getattr(Config, "MAX_CONTEXT_CHARS", 12000)
+        max_chars = Config.MAX_CONTEXT_CHARS
         
-        for doc in documents:
-            metadata = doc.metadata
-            source = metadata.get('source', 'Unknown')
-            page = metadata.get('page')
-
-            content = doc.page_content.strip()
-            
-            # Ensure proper citation header format
-            if page is not None:
-                expected_header = f"[{source}, Page: {page}]"
-            else:
-                expected_header = f"[{source}]"
-            
-            # Fix header format if needed
-            lines = content.split('\n')
-            first_line = lines[0] if lines else ""
-            
-            if (not first_line.startswith('[') or 
-                '[PAGE ' in first_line.upper() or 
-                source not in first_line):
-                
-                # Remove bad header and add correct one
-                if first_line.startswith('[') and ']' in first_line:
-                    content_without_header = '\n'.join(lines[1:])
-                else:
-                    content_without_header = content
-                
-                content = f"{expected_header}\n{content_without_header}"
-            
-            # Add to context if it fits
-            if total_chars + len(content) + 2 > max_chars:
+        # Process each source file
+        for source, docs in docs_by_source.items():
+            if total_chars >= max_chars:
                 break
+                
+            # Sort documents by page number if available
+            docs.sort(key=lambda d: d.metadata.get('page', 0))
             
-            context_parts.append(content)
-            total_chars += len(content) + 2
+            # Process each document
+            for doc in docs:
+                if total_chars >= max_chars:
+                    break
+                
+                content = doc.page_content.strip()
+                if not content:
+                    continue
+                
+                # Ensure proper citation header
+                content = self._ensure_citation_header(content, doc.metadata)
+                
+                # Check if adding this would exceed limit
+                if total_chars + len(content) + 2 > max_chars:
+                    break
+                
+                context_parts.append(content)
+                total_chars += len(content) + 2
         
-        return "\n\n".join(context_parts)
+        final_context = "\n\n".join(context_parts)
+        
+        if Config.DEBUG_MODE:
+            logger.info(f"Created context with {len(context_parts)} parts, {total_chars} chars")
+        
+        return final_context
     
-    def _is_welcome_message(self, message: Dict) -> bool:
-        """Check if message is a welcome message."""
-        content = message.get('content', '').lower()
-        welcome_indicators = [
-            'welcome', 
-            'technical document assistant',
-            'capabilities:',
-            'what would you like to explore'
-        ]
-        return any(indicator in content for indicator in welcome_indicators)
+    def _ensure_citation_header(self, content: str, metadata: Dict) -> str:
+        """Ensure content has proper citation header."""
+        lines = content.split('\n')
+        first_line = lines[0] if lines else ""
+        
+        # Get source info
+        source = metadata.get('source', 'Unknown')
+        page = metadata.get('page')
+        
+        # Create proper header
+        if page is not None:
+            correct_header = f"[{source}, Page: {page}]"
+        else:
+            correct_header = f"[{source}]"
+        
+        # Check if first line is already a proper citation
+        if first_line.startswith('[') and ']' in first_line and source in first_line:
+            # Update existing header to ensure page is included if available
+            if page is not None and f"Page: {page}" not in first_line:
+                content_body = '\n'.join(lines[1:]).strip()
+                return f"{correct_header}\n{content_body}"
+            return content
+        else:
+            # Remove any existing bad header and add correct one
+            if first_line.startswith('[') and ']' in first_line:
+                content_body = '\n'.join(lines[1:]).strip()
+            else:
+                content_body = content.strip()
+            
+            return f"{correct_header}\n{content_body}"
     
     def _error_response(self, message: str) -> Dict[str, Any]:
         """Create standardized error response."""
+        error_msg = f"I apologize, but I encountered an error: {message}. Please try rephrasing your question."
+        
+        if Config.DEBUG_MODE:
+            logger.error(f"Error response: {message}")
+        
         return {
-            "answer": f"I apologize, but I encountered an error: {message}. Please try rephrasing your question.",
+            "answer": error_msg,
             "source_documents": [],
             "total_tokens": 0,
             "prompt_tokens": 0,
