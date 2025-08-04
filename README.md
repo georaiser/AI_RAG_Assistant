@@ -99,11 +99,11 @@ project/
 
 The project follows KISS principles with clear separation of concerns:
 
-- **Config**: Centralized configuration management
-- **DocumentLoader**: Handles all document format processing
-- **VectorStoreManager**: Manages embeddings and retrieval
-- **RAGEngine**: Core question-answering logic
-- **StreamlitApp**: Web interface and user interaction
+- **Configurations** : Centralized configuration management
+- **Document Loader**: Handles all document format processing
+- **Vector Store**   : Manages embeddings and retrieval
+- **Backend Logics** : Core question-answering logic
+- **Streamlit App**  : Web interface and user interaction
 
 ## Key Features
 
